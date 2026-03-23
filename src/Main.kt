@@ -1,3 +1,5 @@
+import effects.auditFraudCheck
+import effects.auditKVStore
 import effects.fail
 import effects.get
 import effects.isFraudulent
@@ -12,7 +14,7 @@ import effects.runSafe
 fun main() {
     // Initial State
     val database =
-        mutableMapOf<String, Any>(
+        mutableMapOf(
             "Alice" to 1000.0,
             "Bob" to 50.0,
         )
@@ -22,13 +24,15 @@ fun main() {
     println("--- Scenario 1: Successful Transfer ---")
     val programSuccess = transferMoney("Alice", "Bob", 100.0)
 
-    // Composition: Safe( Audit( Fraud( DB( Program ) ) ) )
+    // Composition: Safe( Logger( Fraud( DB( Audit( Program ) ) ) ) )
     val result1 =
         programSuccess
-            .runKVStore(database) // Handle DB requests
-            .runFraudCheck() // Handle Fraud requests
-            .runLogger() // Handle Log requests
-            .runSafe() // Handle Errors (Outer layer catches exceptions)
+            .auditKVStore() // Middleware: log every DB op, re-emit for real handler
+            .auditFraudCheck() // Middleware: log suspicious transactions, re-emit
+            .runKVStore(database) // Handler: execute DB operations
+            .runFraudCheck() // Handler: decide fraud logic
+            .runLogger() // Handler: print all logs (including audit logs)
+            .runSafe() // Handler: catch errors
 
     assert(result1 is Program.Done)
     runInterpreter(result1)

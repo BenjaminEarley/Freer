@@ -4,20 +4,30 @@ import Effect
 import Program
 import flatMap
 import interpret
+import interpose
 import perform
 
+// Pure handler: just decides if the transaction is fraudulent
 fun <A> Program<A>.runFraudCheck(): Program<A> =
     interpret<FraudCheck<*>, A> { op, resume ->
         when (op) {
-            is VerifyTransaction -> {
-                val isSus = op.amount > 5000.0
-                if (isSus) {
-                    perform(Log("WARN", "Flagging transaction for review..."))
-                        .flatMap { resume(isSus) }
-                } else {
-                    resume(isSus)
+            is VerifyTransaction -> resume(op.amount > 5000.0)
+        }
+    }
+
+// Middleware: logs suspicious transactions without owning the fraud logic
+fun <A> Program<A>.auditFraudCheck(): Program<A> =
+    interpose<FraudCheck<*>, A> { op, resume ->
+        when (op) {
+            is VerifyTransaction ->
+                perform(op).flatMap { isSus ->
+                    if (isSus) {
+                        perform(Log("WARN", "Flagging transaction for review..."))
+                            .flatMap { resume(isSus) }
+                    } else {
+                        resume(isSus)
+                    }
                 }
-            }
         }
     }
 
