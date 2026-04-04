@@ -102,6 +102,10 @@ sealed class Program<out A> {
         val effect: Effect<Response>,
         val pipeline: Pipeline<Response, A>, // The continuation logic
     ) : Program<A>()
+
+    companion object {
+        val DONE_UNIT: Program<Unit> = Done(Unit)
+    }
 }
 
 fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
@@ -118,8 +122,13 @@ fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
 
 fun <A, B> Program<A>.map(f: (A) -> B): Program<B> = flatMap { Program.Done(f(it)) }
 
+private val IDENTITY_STEP =
+    Pipeline.Step<Erased, Erased> {
+        if (it == Unit) Program.DONE_UNIT else Program.Done(it)
+    }
+
 // Helper to perform an effect
-fun <R> perform(effect: Effect<R>): Program<R> = Program.Suspended(effect, Pipeline.Step { Program.Done(it) })
+fun <R> perform(effect: Effect<R>): Program<R> = Program.Suspended(effect, IDENTITY_STEP as Pipeline<R, R>)
 
 // The Virtual Machine
 // This function advances the pipeline by one step.
