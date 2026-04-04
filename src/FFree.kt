@@ -159,6 +159,9 @@ tailrec fun <A, B> resume(
                     }
                 }
             } else {
+                // to compare traditional implementation in benchmark test
+                // resume(Pipeline.Join(left, right) as Pipeline<A, B>, input)
+
                 // Left is a Join: Rotate Right to maintain performance guarantees.
                 // ( (A + B) + C ) -> ( A + (B + C) )
                 val leftJoin = left as Pipeline.Join
