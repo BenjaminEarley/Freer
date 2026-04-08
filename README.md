@@ -61,9 +61,9 @@ val name: String = greeter
 | `perform(effect)` | Suspend the program, requesting an effect to be handled |
 | `program { }` | DSL builder — use `.bind()` instead of `flatMap` chains |
 | `handle` | Interpret an effect — return the response, resume is automatic |
-| `intercept` | Observe an effect without removing it (middleware) |
+| `intercept` | Middleware — observe an effect, call `proceed()` to re-emit it |
 | `handleS` | Stateful handler — return `newState to response` |
-| `interpret` / `interpose` | Low-level handlers with explicit `resume` control |
+| `interpret` | Low-level handler with explicit `resume` control |
 | `.runOrThrow()` | Extract the final value, or fail naming the unhandled effect |
 
 ## Async I/O
@@ -87,14 +87,14 @@ val name = greeter
 
 ## Middleware
 
-`intercept` observes effects without consuming them — the effect is re-emitted for a downstream handler:
+`intercept` observes effects without consuming them. Call `proceed()` to re-emit the effect to a downstream handler:
 
 ```kotlin
 fun <A> Program<A>.auditConsole(): Program<A> =
-    intercept<Console<*>, A> { op ->
+    intercept<Console<*>, A> { op, proceed ->
         when (op) {
-            is Print -> { log("AUDIT: Print '${op.msg}'"); perform(op).bind() }
-            is ReadLine -> { log("AUDIT: ReadLine"); perform(op).bind() }
+            is Print -> { log("AUDIT: Print '${op.msg}'"); proceed() }
+            is ReadLine -> { log("AUDIT: ReadLine"); proceed() }
         }
     }
 
@@ -102,6 +102,21 @@ val name = greeter
     .auditConsole()   // logs every console op, then re-emits
     .runConsole()     // actually executes them
     .runOrThrow()
+```
+
+`proceed()` returns the downstream handler's response, so you can inspect or modify it:
+
+```kotlin
+fun <A> Program<A>.uppercaseConsole(): Program<A> =
+    intercept<Console<*>, A> { op, proceed ->
+        when (op) {
+            is ReadLine -> {
+                val input = proceed() as String   // get the downstream result
+                input.uppercase()                  // modify it
+            }
+            else -> proceed()
+        }
+    }
 ```
 
 ## Performance
