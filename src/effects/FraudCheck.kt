@@ -16,11 +16,11 @@ fun <A> Program<A>.fraudCheck(): Program<A> =
 
 // Middleware: logs suspicious transactions without owning the fraud logic
 fun <A> Program<A>.auditFraudCheck(): Program<A> =
-    intercept<FraudCheck<*>, A> { op ->
+    intercept<FraudCheck<*>, A> { op, proceed ->
         when (op) {
             is VerifyTransaction -> {
-                val isSus = perform(op).bind()
-                if (isSus) {
+                val isSus = proceed()
+                if (isSus == true) {
                     perform(Log("WARN", "Flagging transaction for review...")).bind()
                 }
                 isSus

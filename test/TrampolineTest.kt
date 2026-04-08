@@ -126,13 +126,13 @@ fun main() {
                 count
             }
 
-        // Middleware intercepts every Increment (re-emits it), then handle consumes it.
-        // The intercept rule calls perform(op).bind() → Suspended path → deferred resume.
+        // Middleware intercepts every Increment (re-emits via proceed), then handle consumes it.
+        // proceed() calls perform(op) → Suspended path → deferred resume.
         // Stack safety comes from the deferred path resetting the stack.
         prog
-            .intercept<Counter<*>, Int> { op ->
+            .intercept<Counter<*>, Int> { op, proceed ->
                 when (op) {
-                    is Increment -> perform(op).bind()
+                    is Increment -> proceed()
                 }
             }.handle<Counter<*>, Int> { op ->
                 when (op) {

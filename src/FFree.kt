@@ -38,20 +38,6 @@ inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
         rule = rule,
     )
 
-// interpose: intercept an effect without removing it
-// Same structure as interpret, but semantically the effect remains available
-// for downstream handlers. The rule can re-emit the effect via perform().
-
-inline fun <reified E : Effect<*>, A, B> Program<A>.interpose(
-    noinline transformDone: (A) -> Program<B>,
-    noinline rule: (E, (Erased) -> Program<B>) -> Program<B>,
-): Program<B> = interpreterLoop(this, E::class.java, transformDone, rule)
-
-inline fun <reified E : Effect<*>, A> Program<A>.interpose(noinline rule: (E, (Erased) -> Program<A>) -> Program<A>): Program<A> =
-    interpose(
-        transformDone = { Program.Done(it) },
-        rule = rule,
-    )
 
 fun <A> Program<A>.runOrThrow(): A =
     when (this) {

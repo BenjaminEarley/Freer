@@ -53,16 +53,16 @@ data class Put<T>(
 ) : KVStore<Unit>
 
 fun <A> Program<A>.auditKVStore(): Program<A> =
-    intercept<KVStore<*>, A> { op ->
+    intercept<KVStore<*>, A> { op, proceed ->
         when (op) {
             is Get<*> -> {
                 perform(Log("AUDIT", "GET ${op.key}")).bind()
-                perform(op).bind()
+                proceed()
             }
 
             is Put<*> -> {
                 perform(Log("AUDIT", "PUT ${op.key} = ${op.value}")).bind()
-                perform(op).bind()
+                proceed()
             }
         }
     }

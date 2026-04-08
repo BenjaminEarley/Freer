@@ -66,10 +66,16 @@ inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend P
         }
     }
 
-// intercept: interpose with auto-resume. The block's return value is the effect response.
-inline fun <reified E : Effect<*>, A> Program<A>.intercept(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
-    interpose<E, A> { op, resume ->
-        when (val result = program { rule(op) }) {
+// intercept: middleware pattern. Observes an effect, calls proceed() to re-emit
+// it to a downstream handler, and can act on the result.
+// proceed() performs the effect — call it where you want the effect to execute.
+// This is called interpose from the paper.
+inline fun <reified E : Effect<*>, A> Program<A>.intercept(
+    noinline rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
+): Program<A> =
+    interpret<E, A> { op, resume ->
+        val proceed: suspend ProgramScope.() -> Any? = { perform(op).bind() }
+        when (val result = program { rule(op, proceed) }) {
             is Program.Done -> resume(result.value)
             is Program.Suspended<*, *> -> result.flatMap { response -> resume(response) }
         }
