@@ -60,13 +60,19 @@ fun <A> program(block: suspend ProgramScope.() -> A): Program<A> {
 // handle: interpret with auto-resume. The block's return value is the effect response.
 inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
     interpret<E, A> { op, resume ->
-        program { rule(op) }.flatMap { response -> resume(response) }
+        when (val result = program { rule(op) }) {
+            is Program.Done -> resume(result.value)
+            is Program.Suspended<*, *> -> result.flatMap { response -> resume(response) }
+        }
     }
 
 // intercept: interpose with auto-resume. The block's return value is the effect response.
 inline fun <reified E : Effect<*>, A> Program<A>.intercept(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
     interpose<E, A> { op, resume ->
-        program { rule(op) }.flatMap { response -> resume(response) }
+        when (val result = program { rule(op) }) {
+            is Program.Done -> resume(result.value)
+            is Program.Suspended<*, *> -> result.flatMap { response -> resume(response) }
+        }
     }
 
 // handleS: stateful interpret with auto-resume. Returns Pair(newState, response).
@@ -75,5 +81,14 @@ inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
     noinline rule: suspend ProgramScope.(S, E) -> Pair<S, Any?>,
 ): Program<A> =
     interpretS<E, S, A>(initialState) { s, op, resume ->
-        program { rule(s, op) }.flatMap { (newState, response) -> resume(newState, response) }
+        when (val result = program { rule(s, op) }) {
+            is Program.Done -> {
+                val (newState, response) = result.value
+                resume(newState, response)
+            }
+
+            is Program.Suspended<*, *> -> {
+                result.flatMap { (newState, response) -> resume(newState, response) }
+            }
+        }
     }
