@@ -36,8 +36,7 @@ fun main() {
     benchmarkSizes(::buildAndRunRight)
 
     println()
-    println("If O(n):  doubling n ≈ doubles time  (ratio ≈ 2.0)")
-    println("If O(n²): doubling n ≈ quadruples time (ratio ≈ 4.0)")
+    println("Without the type-aligned queue, left-associated chains will hang.")
 }
 
 fun benchmarkSizes(run: (Int) -> Pair<Int, Double>) {
