@@ -3,7 +3,7 @@ import effects.auditKVStore
 import effects.fail
 import effects.fraudCheck
 import effects.get
-import effects.ioBlocking
+import effects.io
 import effects.isFraudulent
 import effects.kvStore
 import effects.logError
@@ -13,7 +13,7 @@ import effects.put
 import effects.raise
 import effects.runKVStoreAsync
 
-fun main() {
+suspend fun main() {
     // Initial State
     val database =
         mutableMapOf(
@@ -85,7 +85,7 @@ fun main() {
             .fraudCheck()
             .logger()
             .raise()
-            .ioBlocking() // Handles all IO effects at the edge
+            .io() // Handles all IO effects at the edge
             .runOrThrow()
 
     println(result4)

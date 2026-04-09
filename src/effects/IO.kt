@@ -4,7 +4,6 @@ package effects
 
 import Effect
 import Program
-import kotlinx.coroutines.runBlocking
 import perform
 import resume
 
@@ -19,7 +18,7 @@ data class SuspendIO<R>(
 fun <R> performIO(block: suspend () -> R): Program<R> = perform(SuspendIO(block))
 
 // Apply AFTER all other effect handlers have stripped their effects.
-suspend fun <A> Program<A>.runIO(): Program<A> {
+suspend fun <A> Program<A>.io(): Program<A> {
     var current: Program<A> = this
     while (true) {
         when (val c = current) {
@@ -43,5 +42,3 @@ suspend fun <A> Program<A>.runIO(): Program<A> {
         }
     }
 }
-
-fun <A> Program<A>.ioBlocking(): Program<A> = runBlocking { runIO() }
