@@ -1,8 +1,36 @@
-# Free-er
+# Freer
 
-Extensible Effects for Kotlin, based on [Freer Monads, More Extensible Effects](https://okmij.org/ftp/Haskell/extensible/more.pdf) by Oleg Kiselyov and Hiromi Ishii.
+[![CI](https://github.com/BenjaminEarley/Freer/actions/workflows/ci.yml/badge.svg)](https://github.com/BenjaminEarley/Freer/actions/workflows/ci.yml)
+
+Extensible Effects for Kotlin Multiplatform, based on [Freer Monads, More Extensible Effects](https://okmij.org/ftp/Haskell/extensible/more.pdf) by Oleg Kiselyov and Hiromi Ishii.
 
 Programs are pure data structures that describe computations with effects. Effects are handled by composable interpreters that can be stacked, reordered, and swapped — separating *what* a program does from *how* it's executed. A `Program` value is a reusable description: it can be interpreted any number of times, under different handler stacks.
+
+## Installation
+
+The first release, `0.1.0`, is not on Maven Central yet; the coordinates below take effect once it is published.
+
+In a Kotlin Multiplatform project, add the library to `commonMain`:
+
+```kotlin
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("com.benjaminearley:freer:0.1.0")
+        }
+    }
+}
+```
+
+In a plain JVM project, Gradle resolves the JVM variant from the same coordinates:
+
+```kotlin
+dependencies {
+    implementation("com.benjaminearley:freer:0.1.0")
+}
+```
+
+Targets: JVM (bytecode level 11), Wasm (`wasmJs`), `macosArm64`, `iosArm64`, `iosSimulatorArm64`, `linuxX64`, `linuxArm64` and `mingwX64`. The core API lives in `com.benjaminearley.freer`, the built-in effects in `com.benjaminearley.freer.effects`. Everything is common code except `ioBlocking()`, which is JVM-only.
 
 ## When to use it
 
@@ -15,17 +43,6 @@ Take a refund flow: load the order, call the payment provider, write a ledger en
 - **Rollback policy** is chosen at the call site, not baked in: handle errors outside the ledger handler and a failed notification rolls the write back; handle them inside and the write survives (see [Errors & Exceptions](#errors--exceptions)).
 
 A `suspend` function with injected dependencies gives you the first two. The rest need flags and wrappers threaded through every call, or cannot be expressed at all, because a `suspend` function's effects happen as it runs and cannot be reordered or withheld afterwards. Skip `Program` for tight loops over millions of trivial effects or for code that only needs sequencing — there the interpreter is pure overhead. The sweet spot is business flows with a handful of effects per run that must be tested, previewed, audited, or replayed.
-
-Running main.kt:
-```sh
-./gradlew :examples:run
-```
-
-Running the tests and the benchmark:
-```sh
-./gradlew check
-./gradlew :freer:runBenchmark
-```
 
 ## Quick Example
 
@@ -124,15 +141,15 @@ val name = greeter
     .io()             // suspend terminal: runs all IO effects, returns the value
 ```
 
-`io()` is a terminal `suspend` function — call it from a coroutine, and apply it after every other handler so only `IO` effects remain. Threading: thunk resumptions re-enter through the calling context's `ContinuationInterceptor`, so under a coroutine dispatcher interpretation stays on that dispatcher. In interceptor-free contexts (a plain or bare `suspend` `main`) the first thunk that resumes on a foreign thread would migrate the rest of interpretation onto it — use the blocking edge runner there instead:
+`io()` is a terminal `suspend` function available on every target — call it from a coroutine, and apply it after every other handler so only `IO` effects remain. Threading: thunk resumptions re-enter through the calling context's `ContinuationInterceptor`, so under a coroutine dispatcher interpretation stays on that dispatcher. In interceptor-free contexts (a plain or bare `suspend` `main`) the first thunk that resumes on a foreign thread would migrate the rest of interpretation onto it — on the JVM, use the blocking edge runner there instead:
 
 ```kotlin
 val name = greeter
     .runConsoleAsync()
-    .ioBlocking()     // terminal: blocks the caller, interpretation never leaves this thread
+    .ioBlocking()     // JVM only. Terminal: blocks the caller, interpretation never leaves this thread
 ```
 
-`ioBlocking()` runs every interpretation step on the calling thread; async thunks may hop threads internally, but their results are handed back before interpretation continues, so handler state needs no synchronization.
+`ioBlocking()` is JVM-only. It runs every interpretation step on the calling thread; async thunks may hop threads internally, but their results are handed back before interpretation continues, so handler state needs no synchronization.
 
 ## Middleware
 
@@ -183,24 +200,81 @@ Middleware on an *unrelated* effect, or a rule that answers without calling `pro
 
 ## Errors & Exceptions
 
-Failures are effects too: `fail(reason)` performs a `Raise` effect, and `raise()` materializes the program's outcome as a `Result`. `catchError { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the recovery program replaces it — a failure inside the recovery propagates to the next outer handler (see `effects/Error.kt` and the demo). Effects the recovery performs are only seen by handlers applied *after* the `catchError`, so a recovery that logs needs the log handler outside the catch.
+Failures are effects too: `fail(reason)` performs an `Error.Raise` effect, and `raise()` materializes the program's outcome as a `Result`. `catchError { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the recovery program replaces it — a failure inside the recovery propagates to the next outer handler (see `Error.kt` in the effects package and the demo). Effects the recovery performs are only seen by handlers applied *after* the `catchError`, so a recovery that logs needs the log handler outside the catch.
 
 Handler order decides failure semantics: applying `raise()` before a stateful handler keeps the state written before the failure, applying it after rolls the whole result back — transactional behavior is a call-site choice, not a handler feature (Scenario 7 in the demo).
 
-JVM exceptions are *not* part of the model: any exception raised while a bound program is evaluated — thrown by a handler, an IO thunk, a bound pure `program { }`, or a `flatMap` lambda — propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. `.run()` does not catch it either: its `Result` captures only unhandled-effect failures, so a handler exception propagates out of `run()` as well. Use effects (`Raise`/`Result`) for recoverable failures.
+Exceptions are *not* part of the model: any exception raised while a bound program is evaluated — thrown by a handler, an IO thunk, a bound pure `program { }`, or a `flatMap` lambda — propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. `.run()` does not catch it either: its `Result` captures only unhandled-effect failures, so a handler exception propagates out of `run()` as well. Use effects (`Error.Raise`/`Result`) for recoverable failures.
 
-## More Examples
+## Built-in Effects
 
-`src/examples/` goes beyond the accounting demo:
+The library ships general-purpose effects in `com.benjaminearley.freer.effects`, under `freer/src/commonMain/kotlin/com/benjaminearley/freer/effects/` (plus `ioBlocking()` in `freer/src/jvmMain/kotlin/com/benjaminearley/freer/effects/IOBlocking.kt`):
 
-- **Generators** (`Generators.kt`) — a `Yield` effect whose handler reifies the continuation as data (`Status.Yielded` holds the rest of the program as a callable value); the driver decides when to resume.
-- **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are one-shot coroutines, so one fails under these handlers only when its *own* continuation is resumed more than once: the block binds the choice itself, proceeds on it, or binds a sub-program that performs it. A `program { }` created inside a `flatMap` closure after the choice is fine (each branch gets a fresh one), as is a rule that answers without suspending or middleware on an unrelated effect — `local` and `transactional` are built this way and work under `collectAll`.
-- **Error recovery, handler ordering & transactions** (`ErrorHandling.kt`) — `catchError`, the state-rollback-vs-state-survives ordering demo, and `transactional()` (writes hit a local copy of the state; the commit only runs if the program completes).
-- **Reader with `local`** (`Reader.kt`) — an environment effect where `local { }` overrides the value for one sub-program via `intercept`, without consuming the effect.
+- **State** (`State.kt`) — `getState<S>()`, `putState(value)` and `modifyState { s -> ... }`, handled by `runState(initial)`, or by `runStateWithFinal(initial)`, which also returns the final state as a `Pair`. `transactional()` runs a sub-program as a transaction: its writes hit a local copy of the state, and the commit only runs if the program completes.
+- **Reader** (`Reader.kt`) — `ask<E>()` reads an environment supplied by `runReader(env)`; `local { }` overrides the value for one sub-program via `intercept`, without consuming the effect.
+- **Error** (`Error.kt`) — `fail(reason)`, `raise()` and `catchError { }`, see [Errors & Exceptions](#errors--exceptions).
+- **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a `collectAll()` handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. `guard(condition)` prunes a branch, `orElse(first, second)` is a binary choice. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are one-shot coroutines, so one fails under these handlers only when its *own* continuation is resumed more than once: the block binds the choice itself, proceeds on it, or binds a sub-program that performs it. A `program { }` created inside a `flatMap` closure after the choice is fine (each branch gets a fresh one), as is a rule that answers without suspending or middleware on an unrelated effect — `local` and `transactional` are built this way and work under `collectAll`.
+- **Generators** (`Generators.kt`) — `yieldValue(value)` performs an `Emit.Yield` effect, and the `coroutine()` handler reifies the continuation as data (`Status.Yielded` holds the yielded value and the rest of the program as a callable value); the driver decides when to resume.
+- **IO** (`IO.kt`, `IOBlocking.kt`) — `performIO { }` and the edge runners `io()` and `ioBlocking()`, see [Async I/O](#async-io).
+
+The state and reader types are erased: `getState<S>()` and `ask<E>()` trust the caller, and a handler stack carries one State type and one Reader type. Call sites sometimes need explicit type arguments:
+
+```kotlin
+import com.benjaminearley.freer.effects.*
+
+val counter: Program<Int> = program {
+    modifyState { n: Int -> n + 1 }.bind()
+    getState<Int>().bind()
+}
+counter.runStateWithFinal(41).runOrThrow()          // (42, 42)
+
+val greet: Program<String> = program { "Hello, ${ask<String>().bind()}!" }
+greet.local { e: String -> e.uppercase() }
+    .runReader("world")
+    .runOrThrow()                                   // "Hello, WORLD!"
+
+val countdown: Program<String> = program {
+    for (i in 3 downTo 1) yieldValue(i).bind()
+    "liftoff"
+}
+var status = countdown.coroutine<Int, String>().runOrThrow()
+while (status is Status.Yielded) {
+    println(status.value)                           // 3, 2, 1
+    status = status.resume().runOrThrow()
+}
+```
+
+## Examples
+
+`examples/` is a JVM app that runs every demo in sequence (`./gradlew :examples:run`, entry point `examples/src/main/kotlin/com/benjaminearley/freer/examples/Main.kt`):
+
+- **Accounting** (`accounting/`) — a money transfer over custom `KVStore`, `FraudCheck` and `Logger` effects, with audit middleware, async I/O and error handling.
+- **Bind-chain comparison** (`BindChainComparison.kt`) — Scenario 5, see [Performance](#performance).
+- **Error recovery, handler ordering & transactions** (`ErrorHandling.kt`) — `catchError`, the state-rollback-vs-state-survives ordering demo, and `transactional()`.
+- **Generators** (`GeneratorExample.kt`), **nondeterminism & committed choice** (`NonDetExamples.kt`) and **Reader with `local`** (`ReaderExample.kt`) — small drivers for the built-in effects.
 
 ## Performance
 
-The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `test/Benchmark.kt`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `test/TrampolineTest.kt`). The demo's Scenario 5 (`src/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). In absolute terms, measured on JDK 26 on an Apple-silicon Mac at 1M effects: about 10 ns and 140 bytes per effect through the `program { }` DSL and `handle`, roughly 2x a raw `suspend` loop doing the same work and 1.4x on the left-associated chain of Scenario 5. That gap is the reified continuation itself — a handful of small objects per effect — which is what makes a program replayable, interceptable, and multi-shot. The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
+The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `freer/src/jvmTest/kotlin/com/benjaminearley/freer/Benchmark.kt`, run with `./gradlew :freer:runBenchmark`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `freer/src/commonTest/kotlin/com/benjaminearley/freer/TrampolineTest.kt`). The demo's Scenario 5 (`examples/src/main/kotlin/com/benjaminearley/freer/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). In absolute terms, measured on JDK 26 on an Apple-silicon Mac at 1M effects: about 10 ns and 140 bytes per effect through the `program { }` DSL and `handle`, roughly 2x a raw `suspend` loop doing the same work and 1.4x on the left-associated chain of Scenario 5. That gap is the reified continuation itself — a handful of small objects per effect — which is what makes a program replayable, interceptable, and multi-shot. The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
+
+## Project layout
+
+- `freer/` — the library: common code in `freer/src/commonMain/`, JVM-only code (including `ioBlocking()`) in `freer/src/jvmMain/`, and the implementation shared by Wasm and native in `freer/src/nonJvmMain/`. Tests in `freer/src/commonTest/` (run on every target) and `freer/src/jvmTest/` (`IoBlockingTest.kt` and the benchmark harness). Public API dumps in `freer/api/`.
+- `examples/` — the JVM demo app.
+- `.github/workflows/` — `ci.yml` (a Linux job for the JVM, Wasm and `linuxX64` tests, the API check and the demo; a macOS job for the macOS and iOS simulator tests that also assembles every Apple target) and `release.yml` (tag-driven publishing to Maven Central).
+
+## Contributing / Releasing
+
+```sh
+./gradlew check                 # tests on JVM, Node Wasm and the host native target, plus the API check
+./gradlew :examples:run         # the demo
+./gradlew :freer:runBenchmark   # the JVM benchmark harness
+./gradlew publishToMavenLocal   # install the current version into ~/.m2
+```
+
+The library builds in explicit API mode, so every public declaration needs an explicit visibility modifier and return type. The binary-compatibility validator checks the public API against the dumps in `freer/api/` as part of `check`; when you change the public API intentionally, run `./gradlew apiDump` and commit the updated dumps with the change.
+
+`main` stays on a `-SNAPSHOT` version (in `gradle.properties`). To release, push a tag `vX.Y.Z`: the release workflow takes the version from the tag, runs `check`, then signs and publishes to Maven Central. It needs four repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_PASSWORD`.
 
 ## License
 
