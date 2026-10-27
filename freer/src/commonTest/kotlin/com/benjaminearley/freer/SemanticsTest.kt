@@ -34,6 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -810,6 +811,62 @@ class SemanticsTest {
             perform(AskInt)
                 .handleS<Ask<*>, Int, Int>(0) { s, _ -> s to Program.Done(5) }
                 .runOrThrow()
+        }
+    }
+
+    @Test
+    fun handleRuleReturningUnboundPerformIOThrowsInsteadOfDroppingTheIO() {
+        var ran = false
+        assertMissingBind {
+            runSync {
+                program { perform(Say("hi")).bind() }
+                    .handle<Out<*>, Unit> { op ->
+                        when (op) {
+                            is Say -> performIO { ran = true }
+                        }
+                    }.io()
+            }
+        }
+        assertFalse(ran, "the unbound IO ran")
+    }
+
+    @Test
+    fun handleSRuleWhoseResponseElementIsProgramThrows() {
+        assertMissingBind {
+            runSync {
+                perform(AskInt)
+                    .handleS<Ask<*>, Int, Int>(0) { s, _ ->
+                        val step = performIO { 1 }.bind()
+                        (s + step) to Program.Done(5)
+                    }.io()
+            }
+        }
+    }
+
+    @Test
+    fun handleRuleThatSuspendsThenReturnsProgramThrows() {
+        assertMissingBind {
+            runSync {
+                perform(AskInt)
+                    .handle<Ask<*>, Int> {
+                        performIO { 1 }.bind()
+                        Program.Done(5)
+                    }.io()
+            }
+        }
+    }
+
+    @Test
+    fun interceptRuleThatSuspendsThenReturnsProgramThrows() {
+        assertMissingBind {
+            runSync {
+                perform(AskInt)
+                    .intercept<Ask<*>, Int> { op, _ ->
+                        performIO { 1 }.bind()
+                        perform(op)
+                    }.handle<Ask<*>, Int> { 1 }
+                    .io()
+            }
         }
     }
 

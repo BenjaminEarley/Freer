@@ -9,7 +9,6 @@ import kotlin.coroutines.suspendCoroutine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 
 class IoBlockingTest {
     @Test
@@ -48,53 +47,5 @@ class IoBlockingTest {
                 }.ioBlocking()
             }
         assertEquals("async boom", e.message)
-    }
-
-    @Test
-    fun handleRuleReturningUnboundPerformIOThrowsInsteadOfDroppingTheIO() {
-        var ran = false
-        assertMissingBind {
-            program { perform(Say("hi")).bind() }
-                .handle<Out<*>, Unit> { op ->
-                    when (op) {
-                        is Say -> performIO { ran = true }
-                    }
-                }.ioBlocking()
-        }
-        assertFalse(ran, "the unbound IO ran")
-    }
-
-    @Test
-    fun handleSRuleWhoseResponseElementIsProgramThrows() {
-        assertMissingBind {
-            perform(AskInt)
-                .handleS<Ask<*>, Int, Int>(0) { s, _ ->
-                    val step = performIO { 1 }.bind()
-                    (s + step) to Program.Done(5)
-                }.ioBlocking()
-        }
-    }
-
-    @Test
-    fun handleRuleThatSuspendsThenReturnsProgramThrows() {
-        assertMissingBind {
-            perform(AskInt)
-                .handle<Ask<*>, Int> {
-                    performIO { 1 }.bind()
-                    Program.Done(5)
-                }.ioBlocking()
-        }
-    }
-
-    @Test
-    fun interceptRuleThatSuspendsThenReturnsProgramThrows() {
-        assertMissingBind {
-            perform(AskInt)
-                .intercept<Ask<*>, Int> { op, _ ->
-                    performIO { 1 }.bind()
-                    perform(op)
-                }.handle<Ask<*>, Int> { 1 }
-                .ioBlocking()
-        }
     }
 }
