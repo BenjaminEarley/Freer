@@ -17,7 +17,36 @@ import kotlin.coroutines.resume
  * restricted, so only Program binds — not arbitrary suspend calls — can occur inside.
  */
 @RestrictsSuspension
-public class ProgramScope @PublishedApi internal constructor() : Continuation<Any?> {
+public sealed class ProgramScope {
+    public suspend fun <A> Program<A>.bind(): A =
+        suspendCoroutineUninterceptedOrReturn { cont ->
+            val program = this@bind
+            if (program is Program.Done) {
+                // Already a value: hand it straight back without suspending, instead of
+                // parking it in pendingProgram/pendingContinuation for buildProgram to
+                // resume one step later.
+                program.value
+            } else {
+                suspendOn(program, cont)
+            }
+        }
+
+    // Park [program] as the pending bind and signal the coroutine behind [cont] to
+    // suspend; buildProgram sequences the program and resumes [cont] with its value.
+    internal abstract fun suspendOn(
+        program: Program<*>,
+        cont: Continuation<*>,
+    ): Any?
+}
+
+// The only ProgramScope, which is also the completion of the coroutine it drives. The
+// Continuation supertype lives here rather than on the public type so that block code
+// cannot call resumeWith and complete the coroutine behind the builder's back. One
+// object per program{} evaluation and per rule invocation.
+@PublishedApi
+internal class ProgramScopeImpl @PublishedApi internal constructor() :
+    ProgramScope(),
+    Continuation<Any?> {
     override val context: CoroutineContext = EmptyCoroutineContext
 
     // What the coroutine last signalled, as plain fields rather than one object per
@@ -33,21 +62,7 @@ public class ProgramScope @PublishedApi internal constructor() : Continuation<An
         completed = true
     }
 
-    public suspend fun <A> Program<A>.bind(): A =
-        suspendCoroutineUninterceptedOrReturn { cont ->
-            val program = this@bind
-            if (program is Program.Done) {
-                // Already a value: hand it straight back without suspending, instead of
-                // parking the program in `state` for buildProgram to resume one step later.
-                program.value
-            } else {
-                suspendOn(program, cont)
-            }
-        }
-
-    // Park [program] as the pending bind and signal the coroutine behind [cont] to
-    // suspend; buildProgram sequences the program and resumes [cont] with its value.
-    internal fun suspendOn(
+    override fun suspendOn(
         program: Program<*>,
         cont: Continuation<*>,
     ): Any? {
@@ -89,7 +104,7 @@ public class ProgramScope @PublishedApi internal constructor() : Continuation<An
 // value to the parked coroutine and carries on building the program. One object per
 // bind, with the single-shot flag as a field.
 private class BindStep(
-    private val scope: ProgramScope,
+    private val scope: ProgramScopeImpl,
     private val continuation: Continuation<Any?>,
 ) : Pipeline.Step<Erased, Erased>() {
     private var consumed = false
@@ -117,7 +132,7 @@ private class BindStep(
  */
 public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
     Program.Defer {
-        val scope = ProgramScope()
+        val scope = ProgramScopeImpl()
         block.createCoroutineUnintercepted(receiver = scope, completion = scope).resume(Unit)
         scope.buildProgram()
     }
@@ -136,7 +151,7 @@ internal inline fun <A, B> runRuleBlock(
     noinline block: suspend ProgramScope.() -> A,
     crossinline onValue: (A) -> Program<B>,
 ): Program<B> {
-    val scope = ProgramScope()
+    val scope = ProgramScopeImpl()
     val immediate = block.startCoroutineUninterceptedOrReturn(receiver = scope, completion = scope)
     return if (immediate === COROUTINE_SUSPENDED) {
         scope.buildProgram<A>().force().flatMap { onValue(it) }
@@ -157,9 +172,8 @@ internal fun checkResponse(
     return response
 }
 
-@PublishedApi
 internal fun programResponseError(effect: Any): Nothing {
-    val name = effect::class.simpleName ?: "effect"
+    val name = effect::class.simpleName ?: effect.toString()
     throw IllegalStateException(
         "Rule for $name returned a Program instead of a response. Missing .bind()? " +
             "handle, intercept and handleS responses are plain values; use interpret to return a program.",

@@ -11,15 +11,15 @@ package com.benjaminearley.freer
 import kotlin.reflect.KClass
 
 /** The "Existential" type. We use Any? because of type erasure. */
-public typealias Erased = Any?
+internal typealias Erased = Any?
 
 // interpret: handle and remove an effect
 public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
-    noinline rule: (E, (Erased) -> Program<B>) -> Program<B>,
+    noinline rule: (E, (Any?) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpret(this, E::class, transformDone, rule)
 
-public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Erased) -> Program<A>) -> Program<A>): Program<A> =
+public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Any?) -> Program<A>) -> Program<A>): Program<A> =
     interpret(
         transformDone = { Program.Done(it) },
         rule = rule,
@@ -32,12 +32,12 @@ public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule:
 public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
     noinline transformDone: (S, A) -> Program<B>,
-    noinline rule: (S, E, (S, Erased) -> Program<B>) -> Program<B>,
+    noinline rule: (S, E, (S, Any?) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpretS(this, initialState, E::class, transformDone, rule)
 
 public inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
-    noinline rule: (S, E, (S, Erased) -> Program<A>) -> Program<A>,
+    noinline rule: (S, E, (S, Any?) -> Program<A>) -> Program<A>,
 ): Program<A> =
     interpretS(
         initialState = initialState,
@@ -144,9 +144,9 @@ public sealed class Program<out A> {
     ) : Program<A>()
 
     // Impure: The program is paused (Suspended), waiting for a Request to be handled
-    public class Suspended<Response, out A> internal constructor(
-        internal val effect: Effect<Response>,
-        internal val pipeline: Pipeline<Response, A>, // The continuation logic
+    internal class Suspended<Response, out A>(
+        val effect: Effect<Response>,
+        val pipeline: Pipeline<Response, A>, // The continuation logic
     ) : Program<A>()
 
     // Lazy: The program is a description that is (re)built on demand. Interpreting
@@ -168,8 +168,8 @@ public sealed class Program<out A> {
     // is a broken rule contract (see interpret) and fails with trampolineMisuse().
     internal data object Bounce : Program<Nothing>()
 
-    public companion object {
-        public val DONE_UNIT: Program<Unit> = Done(Unit)
+    internal companion object {
+        val DONE_UNIT: Program<Unit> = Done(Unit)
     }
 }
 
@@ -389,7 +389,6 @@ internal fun directResumeDiscarded(): Nothing =
 // from the same stack depth instead of nesting one frame per effect. Violations
 // of the rule contract (see interpret) fail with IllegalStateException instead
 // of corrupting silently.
-@PublishedApi
 internal fun <Target : Effect<*>, A, B> interpreterLoop(
     initialProgram: Program<A>,
     targetClass: KClass<Target>,
@@ -485,7 +484,6 @@ private class Resumer<Target : Effect<*>, A, B>(
 
 // Stack-safe Stateful Interpreter Loop (paper's handleRelayS)
 // Same trampoline as interpreterLoop, but threads state S through every step.
-@PublishedApi
 internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
     initialProgram: Program<A>,
     initialState: S,

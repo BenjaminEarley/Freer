@@ -153,7 +153,7 @@ class SemanticsTest {
         // Short-circuit the interpretation but capture the continuation; hand-built
         // programs have pure pipelines, so the deferred continuation can be invoked
         // any number of times, each producing an independent result.
-        var saved: ((Erased) -> Program<Int>)? = null
+        var saved: ((Any?) -> Program<Int>)? = null
         val shortCircuited =
             askPlusOne()
                 .interpret<Ask<*>, Int> { op, resume ->
@@ -270,7 +270,7 @@ class SemanticsTest {
     @Test
     fun resumingOneProgramBlockSuspensionTwiceThrows() {
         // A program{} block is a single-shot coroutine
-        var saved: ((Erased) -> Program<Int>)? = null
+        var saved: ((Any?) -> Program<Int>)? = null
         val shortCircuited =
             program { perform(AskInt).bind() + 1 }
                 .interpret<Ask<*>, Int> { op, resume ->
