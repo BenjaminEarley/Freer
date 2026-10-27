@@ -18,12 +18,7 @@ public abstract class com/benjaminearley/freer/Program {
 
 public final class com/benjaminearley/freer/Program$Done : com/benjaminearley/freer/Program {
 	public fun <init> (Ljava/lang/Object;)V
-	public final fun component1 ()Ljava/lang/Object;
-	public final fun copy (Ljava/lang/Object;)Lcom/benjaminearley/freer/Program$Done;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/Program$Done;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/Program$Done;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getValue ()Ljava/lang/Object;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -42,13 +37,7 @@ public abstract interface class com/benjaminearley/freer/effects/Emit : com/benj
 }
 
 public final class com/benjaminearley/freer/effects/Emit$Yield : com/benjaminearley/freer/effects/Emit {
-	public fun <init> (Ljava/lang/Object;)V
-	public final fun component1 ()Ljava/lang/Object;
-	public final fun copy (Ljava/lang/Object;)Lcom/benjaminearley/freer/effects/Emit$Yield;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/Emit$Yield;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/Emit$Yield;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getValue ()Ljava/lang/Object;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -56,13 +45,7 @@ public abstract interface class com/benjaminearley/freer/effects/Failure : com/b
 }
 
 public final class com/benjaminearley/freer/effects/Failure$Raise : com/benjaminearley/freer/effects/Failure {
-	public fun <init> (Ljava/lang/String;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Lcom/benjaminearley/freer/effects/Failure$Raise;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/Failure$Raise;Ljava/lang/String;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/Failure$Raise;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getReason ()Ljava/lang/String;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -76,20 +59,14 @@ public abstract class com/benjaminearley/freer/effects/Generator {
 }
 
 public final class com/benjaminearley/freer/effects/Generator$Finished : com/benjaminearley/freer/effects/Generator {
-	public fun <init> (Ljava/lang/Object;)V
-	public final fun component1 ()Ljava/lang/Object;
-	public final fun copy (Ljava/lang/Object;)Lcom/benjaminearley/freer/effects/Generator$Finished;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/Generator$Finished;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/Generator$Finished;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getResult ()Ljava/lang/Object;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/benjaminearley/freer/effects/Generator$Yielded : com/benjaminearley/freer/effects/Generator {
-	public fun <init> (Ljava/lang/Object;Lkotlin/jvm/functions/Function0;)V
 	public final fun getResume ()Lkotlin/jvm/functions/Function0;
 	public final fun getValue ()Ljava/lang/Object;
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/benjaminearley/freer/effects/GeneratorsKt {
@@ -101,13 +78,7 @@ public abstract interface class com/benjaminearley/freer/effects/IO : com/benjam
 }
 
 public final class com/benjaminearley/freer/effects/IO$Suspend : com/benjaminearley/freer/effects/IO {
-	public fun <init> (Lkotlin/jvm/functions/Function1;)V
-	public final fun component1 ()Lkotlin/jvm/functions/Function1;
-	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/benjaminearley/freer/effects/IO$Suspend;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/IO$Suspend;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/IO$Suspend;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getThunk ()Lkotlin/jvm/functions/Function1;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -124,13 +95,7 @@ public abstract interface class com/benjaminearley/freer/effects/NonDet : com/be
 }
 
 public final class com/benjaminearley/freer/effects/NonDet$Choose : com/benjaminearley/freer/effects/NonDet {
-	public fun <init> (Ljava/util/List;)V
-	public final fun component1 ()Ljava/util/List;
-	public final fun copy (Ljava/util/List;)Lcom/benjaminearley/freer/effects/NonDet$Choose;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/NonDet$Choose;Ljava/util/List;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/NonDet$Choose;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getOptions ()Ljava/util/List;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -171,13 +136,7 @@ public final class com/benjaminearley/freer/effects/State$Get : com/benjaminearl
 }
 
 public final class com/benjaminearley/freer/effects/State$Put : com/benjaminearley/freer/effects/State {
-	public fun <init> (Ljava/lang/Object;)V
-	public final fun component1 ()Ljava/lang/Object;
-	public final fun copy (Ljava/lang/Object;)Lcom/benjaminearley/freer/effects/State$Put;
-	public static synthetic fun copy$default (Lcom/benjaminearley/freer/effects/State$Put;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/effects/State$Put;
-	public fun equals (Ljava/lang/Object;)Z
 	public final fun getValue ()Ljava/lang/Object;
-	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 

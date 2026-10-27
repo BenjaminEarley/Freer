@@ -40,9 +40,11 @@ public fun <A> Program<A>.recover(fallback: (String) -> Program<A>): Program<A> 
 /** Failure: handled by [attempt] or [recover]. */
 public sealed interface Failure<out R> : Effect<R> {
     /** Fail with [reason]; never answered, so the program does not continue past it. */
-    public data class Raise(
+    public class Raise internal constructor(
         public val reason: String,
-    ) : Failure<Nothing>
+    ) : Failure<Nothing> {
+        override fun toString(): String = "Raise($reason)"
+    }
 }
 
 /** Fail with [reason]: performs [Failure.Raise]. */

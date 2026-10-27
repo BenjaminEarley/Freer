@@ -16,9 +16,11 @@ import com.benjaminearley.freer.trampolineMisuse
  */
 public sealed interface IO<out R> : Effect<R> {
     /** Run [thunk] and respond with its result. */
-    public data class Suspend<R>(
+    public class Suspend<R> internal constructor(
         public val thunk: suspend () -> R,
-    ) : IO<R>
+    ) : IO<R> {
+        override fun toString(): String = "Suspend(...)"
+    }
 }
 
 /** A program that runs [block] when interpreted by [io] and produces its result. */

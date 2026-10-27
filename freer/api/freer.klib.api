@@ -10,60 +10,36 @@ abstract interface <#A: out kotlin/Any?> com.benjaminearley.freer/Effect // com.
 
 sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/Emit : com.benjaminearley.freer/Effect<#A> { // com.benjaminearley.freer.effects/Emit|null[0]
     final class <#A1: out kotlin/Any?> Yield : com.benjaminearley.freer.effects/Emit<kotlin/Unit> { // com.benjaminearley.freer.effects/Emit.Yield|null[0]
-        constructor <init>(#A1) // com.benjaminearley.freer.effects/Emit.Yield.<init>|<init>(1:0){}[0]
-
         final val value // com.benjaminearley.freer.effects/Emit.Yield.value|{}value[0]
             final fun <get-value>(): #A1 // com.benjaminearley.freer.effects/Emit.Yield.value.<get-value>|<get-value>(){}[0]
 
-        final fun component1(): #A1 // com.benjaminearley.freer.effects/Emit.Yield.component1|component1(){}[0]
-        final fun copy(#A1 = ...): com.benjaminearley.freer.effects/Emit.Yield<#A1> // com.benjaminearley.freer.effects/Emit.Yield.copy|copy(1:0){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/Emit.Yield.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/Emit.Yield.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/Emit.Yield.toString|toString(){}[0]
     }
 }
 
 sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/Failure : com.benjaminearley.freer/Effect<#A> { // com.benjaminearley.freer.effects/Failure|null[0]
     final class Raise : com.benjaminearley.freer.effects/Failure<kotlin/Nothing> { // com.benjaminearley.freer.effects/Failure.Raise|null[0]
-        constructor <init>(kotlin/String) // com.benjaminearley.freer.effects/Failure.Raise.<init>|<init>(kotlin.String){}[0]
-
         final val reason // com.benjaminearley.freer.effects/Failure.Raise.reason|{}reason[0]
             final fun <get-reason>(): kotlin/String // com.benjaminearley.freer.effects/Failure.Raise.reason.<get-reason>|<get-reason>(){}[0]
 
-        final fun component1(): kotlin/String // com.benjaminearley.freer.effects/Failure.Raise.component1|component1(){}[0]
-        final fun copy(kotlin/String = ...): com.benjaminearley.freer.effects/Failure.Raise // com.benjaminearley.freer.effects/Failure.Raise.copy|copy(kotlin.String){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/Failure.Raise.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/Failure.Raise.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/Failure.Raise.toString|toString(){}[0]
     }
 }
 
 sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/IO : com.benjaminearley.freer/Effect<#A> { // com.benjaminearley.freer.effects/IO|null[0]
     final class <#A1: kotlin/Any?> Suspend : com.benjaminearley.freer.effects/IO<#A1> { // com.benjaminearley.freer.effects/IO.Suspend|null[0]
-        constructor <init>(kotlin.coroutines/SuspendFunction0<#A1>) // com.benjaminearley.freer.effects/IO.Suspend.<init>|<init>(kotlin.coroutines.SuspendFunction0<1:0>){}[0]
-
         final val thunk // com.benjaminearley.freer.effects/IO.Suspend.thunk|{}thunk[0]
             final fun <get-thunk>(): kotlin.coroutines/SuspendFunction0<#A1> // com.benjaminearley.freer.effects/IO.Suspend.thunk.<get-thunk>|<get-thunk>(){}[0]
 
-        final fun component1(): kotlin.coroutines/SuspendFunction0<#A1> // com.benjaminearley.freer.effects/IO.Suspend.component1|component1(){}[0]
-        final fun copy(kotlin.coroutines/SuspendFunction0<#A1> = ...): com.benjaminearley.freer.effects/IO.Suspend<#A1> // com.benjaminearley.freer.effects/IO.Suspend.copy|copy(kotlin.coroutines.SuspendFunction0<1:0>){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/IO.Suspend.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/IO.Suspend.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/IO.Suspend.toString|toString(){}[0]
     }
 }
 
 sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/NonDet : com.benjaminearley.freer/Effect<#A> { // com.benjaminearley.freer.effects/NonDet|null[0]
     final class Choose : com.benjaminearley.freer.effects/NonDet<kotlin/Any?> { // com.benjaminearley.freer.effects/NonDet.Choose|null[0]
-        constructor <init>(kotlin.collections/List<kotlin/Any?>) // com.benjaminearley.freer.effects/NonDet.Choose.<init>|<init>(kotlin.collections.List<kotlin.Any?>){}[0]
-
         final val options // com.benjaminearley.freer.effects/NonDet.Choose.options|{}options[0]
             final fun <get-options>(): kotlin.collections/List<kotlin/Any?> // com.benjaminearley.freer.effects/NonDet.Choose.options.<get-options>|<get-options>(){}[0]
 
-        final fun component1(): kotlin.collections/List<kotlin/Any?> // com.benjaminearley.freer.effects/NonDet.Choose.component1|component1(){}[0]
-        final fun copy(kotlin.collections/List<kotlin/Any?> = ...): com.benjaminearley.freer.effects/NonDet.Choose // com.benjaminearley.freer.effects/NonDet.Choose.copy|copy(kotlin.collections.List<kotlin.Any?>){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/NonDet.Choose.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/NonDet.Choose.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/NonDet.Choose.toString|toString(){}[0]
     }
 }
@@ -78,15 +54,9 @@ sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/Reader :
 
 sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/State : com.benjaminearley.freer/Effect<#A> { // com.benjaminearley.freer.effects/State|null[0]
     final class Put : com.benjaminearley.freer.effects/State<kotlin/Unit> { // com.benjaminearley.freer.effects/State.Put|null[0]
-        constructor <init>(kotlin/Any?) // com.benjaminearley.freer.effects/State.Put.<init>|<init>(kotlin.Any?){}[0]
-
         final val value // com.benjaminearley.freer.effects/State.Put.value|{}value[0]
             final fun <get-value>(): kotlin/Any? // com.benjaminearley.freer.effects/State.Put.value.<get-value>|<get-value>(){}[0]
 
-        final fun component1(): kotlin/Any? // com.benjaminearley.freer.effects/State.Put.component1|component1(){}[0]
-        final fun copy(kotlin/Any? = ...): com.benjaminearley.freer.effects/State.Put // com.benjaminearley.freer.effects/State.Put.copy|copy(kotlin.Any?){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/State.Put.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/State.Put.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/State.Put.toString|toString(){}[0]
     }
 
@@ -99,24 +69,18 @@ sealed interface <#A: out kotlin/Any?> com.benjaminearley.freer.effects/State : 
 
 sealed class <#A: out kotlin/Any?, #B: out kotlin/Any?> com.benjaminearley.freer.effects/Generator { // com.benjaminearley.freer.effects/Generator|null[0]
     final class <#A1: out kotlin/Any?, #B1: out kotlin/Any?> Yielded : com.benjaminearley.freer.effects/Generator<#A1, #B1> { // com.benjaminearley.freer.effects/Generator.Yielded|null[0]
-        constructor <init>(#A1, kotlin/Function0<com.benjaminearley.freer/Program<com.benjaminearley.freer.effects/Generator<#A1, #B1>>>) // com.benjaminearley.freer.effects/Generator.Yielded.<init>|<init>(1:0;kotlin.Function0<com.benjaminearley.freer.Program<com.benjaminearley.freer.effects.Generator<1:0,1:1>>>){}[0]
-
         final val resume // com.benjaminearley.freer.effects/Generator.Yielded.resume|{}resume[0]
             final fun <get-resume>(): kotlin/Function0<com.benjaminearley.freer/Program<com.benjaminearley.freer.effects/Generator<#A1, #B1>>> // com.benjaminearley.freer.effects/Generator.Yielded.resume.<get-resume>|<get-resume>(){}[0]
         final val value // com.benjaminearley.freer.effects/Generator.Yielded.value|{}value[0]
             final fun <get-value>(): #A1 // com.benjaminearley.freer.effects/Generator.Yielded.value.<get-value>|<get-value>(){}[0]
+
+        final fun toString(): kotlin/String // com.benjaminearley.freer.effects/Generator.Yielded.toString|toString(){}[0]
     }
 
     final class <#A1: out kotlin/Any?> Finished : com.benjaminearley.freer.effects/Generator<kotlin/Nothing, #A1> { // com.benjaminearley.freer.effects/Generator.Finished|null[0]
-        constructor <init>(#A1) // com.benjaminearley.freer.effects/Generator.Finished.<init>|<init>(1:0){}[0]
-
         final val result // com.benjaminearley.freer.effects/Generator.Finished.result|{}result[0]
             final fun <get-result>(): #A1 // com.benjaminearley.freer.effects/Generator.Finished.result.<get-result>|<get-result>(){}[0]
 
-        final fun component1(): #A1 // com.benjaminearley.freer.effects/Generator.Finished.component1|component1(){}[0]
-        final fun copy(#A1 = ...): com.benjaminearley.freer.effects/Generator.Finished<#A1> // com.benjaminearley.freer.effects/Generator.Finished.copy|copy(1:0){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer.effects/Generator.Finished.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer.effects/Generator.Finished.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer.effects/Generator.Finished.toString|toString(){}[0]
     }
 }
@@ -128,10 +92,6 @@ sealed class <#A: out kotlin/Any?> com.benjaminearley.freer/Program { // com.ben
         final val value // com.benjaminearley.freer/Program.Done.value|{}value[0]
             final fun <get-value>(): #A1 // com.benjaminearley.freer/Program.Done.value.<get-value>|<get-value>(){}[0]
 
-        final fun component1(): #A1 // com.benjaminearley.freer/Program.Done.component1|component1(){}[0]
-        final fun copy(#A1 = ...): com.benjaminearley.freer/Program.Done<#A1> // com.benjaminearley.freer/Program.Done.copy|copy(1:0){}[0]
-        final fun equals(kotlin/Any?): kotlin/Boolean // com.benjaminearley.freer/Program.Done.equals|equals(kotlin.Any?){}[0]
-        final fun hashCode(): kotlin/Int // com.benjaminearley.freer/Program.Done.hashCode|hashCode(){}[0]
         final fun toString(): kotlin/String // com.benjaminearley.freer/Program.Done.toString|toString(){}[0]
     }
 }

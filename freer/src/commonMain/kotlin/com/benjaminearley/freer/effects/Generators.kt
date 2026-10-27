@@ -18,9 +18,11 @@ import com.benjaminearley.freer.perform
 /** Generator output: handled by [generator]. */
 public sealed interface Emit<out R> : Effect<R> {
     /** Hand [value] to the driver and pause until it resumes the generator. */
-    public data class Yield<out T>(
+    public class Yield<out T> internal constructor(
         public val value: T,
-    ) : Emit<Unit>
+    ) : Emit<Unit> {
+        override fun toString(): String = "Yield($value)"
+    }
 }
 
 /** Yield [value] to the driver of the enclosing [generator] and pause until resumed. */
@@ -29,18 +31,22 @@ public fun <T> yieldValue(value: T): Program<Unit> = perform(Emit.Yield(value))
 /** One step of a generator run by [generator]: either [Finished] or [Yielded]. */
 public sealed class Generator<out T, out A> {
     /** The generator returned [result]; there is nothing left to resume. */
-    public data class Finished<out A>(
+    public class Finished<out A> internal constructor(
         public val result: A,
-    ) : Generator<Nothing, A>()
+    ) : Generator<Nothing, A>() {
+        override fun toString(): String = "Finished($result)"
+    }
 
     /**
      * The generator yielded [value]. [resume] returns the program for the next step;
      * the driver decides when, and whether, to run it.
      */
-    public class Yielded<out T, out A>(
+    public class Yielded<out T, out A> internal constructor(
         public val value: T,
         public val resume: () -> Program<Generator<T, A>>,
-    ) : Generator<T, A>()
+    ) : Generator<T, A>() {
+        override fun toString(): String = "Yielded($value)"
+    }
 }
 
 /**

@@ -63,9 +63,11 @@ public sealed interface State<out R> : Effect<R> {
     public data object Get : State<Any?>
 
     /** Replace the state with [value]; responds with Unit. */
-    public data class Put(
+    public class Put internal constructor(
         public val value: Any?,
-    ) : State<Unit>
+    ) : State<Unit> {
+        override fun toString(): String = "Put($value)"
+    }
 }
 
 /** Read the current state. Unchecked: [S] must be the type the handler holds. */

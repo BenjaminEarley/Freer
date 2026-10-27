@@ -38,9 +38,11 @@ import com.benjaminearley.freer.program
  */
 public sealed interface NonDet<out R> : Effect<R> {
     /** Continue once for each of [options], in order; no options prunes the branch. */
-    public data class Choose(
+    public class Choose internal constructor(
         public val options: List<Any?>,
-    ) : NonDet<Any?>
+    ) : NonDet<Any?> {
+        override fun toString(): String = "Choose($options)"
+    }
 }
 
 /**

@@ -154,9 +154,11 @@ public interface Effect<out R>
  */
 public sealed class Program<out A> {
     /** A finished program holding its final [value]; it performs no effects. */
-    public data class Done<out A>(
-        val value: A,
-    ) : Program<A>()
+    public class Done<out A>(
+        public val value: A,
+    ) : Program<A>() {
+        override fun toString(): String = "Done($value)"
+    }
 
     // Impure: The program is paused (Suspended), waiting for a Request to be handled
     internal class Suspended<Response, out A>(
