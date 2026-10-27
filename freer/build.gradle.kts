@@ -1,14 +1,13 @@
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
-import kotlinx.validation.ExperimentalBCVApi
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation
 
 plugins {
     kotlin("multiplatform")
-    alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.maven.publish)
     signing
 }
@@ -67,16 +66,14 @@ signing {
     isRequired = providers.gradleProperty("signingInMemoryKey").isPresent
 }
 
-apiValidation {
-    @OptIn(ExperimentalBCVApi::class)
-    klib {
-        enabled = true
-    }
-}
-
-@OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class)
+// The built-in ABI validation DSL is experimental in Kotlin 2.4 and needs an explicit opt-in.
+@OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class, ExperimentalAbiValidation::class)
 kotlin {
     explicitApi()
+
+    // Checks the public API of the JVM jar and of every klib target against the dumps in api/.
+    abiValidation()
+
     jvmToolchain(17)
 
     jvm {

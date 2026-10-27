@@ -276,7 +276,7 @@ The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Ref
 
 On Linux, `check` runs the native tests for `linuxX64`; on an Apple-silicon Mac, for `macosArm64` and also `iosSimulatorArm64`. Building the Apple targets needs Xcode installed. The `mingwX64` tests only run on Windows, in the CI's Windows job.
 
-The library builds in explicit API mode, so every public declaration needs an explicit visibility modifier and return type. The binary-compatibility validator checks the public API against the dumps in `freer/api/` as part of `check`; when you change the public API intentionally, run `./gradlew apiDump` and commit the updated dumps with the change.
+The library builds in explicit API mode, so every public declaration needs an explicit visibility modifier and return type. The Kotlin Gradle plugin's built-in ABI validation checks the public API against the dumps in `freer/api/` as part of `check` (task `checkKotlinAbi`); when you change the public API intentionally, run `./gradlew updateKotlinAbi` and commit the updated dumps with the change.
 
 `main` stays on a `-SNAPSHOT` version (in `gradle.properties`). To release, push a tag `vX.Y.Z` on a commit that is already on `main`: the release workflow refuses any other commit, takes the version from the tag, runs `check`, then signs and publishes to Maven Central. It needs four repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_PASSWORD`.
 
