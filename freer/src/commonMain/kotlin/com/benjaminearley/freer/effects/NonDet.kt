@@ -32,19 +32,19 @@ import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
 
-sealed interface NonDet<out R> : Effect<R>
+public sealed interface NonDet<out R> : Effect<R>
 
-data class Choose(
+public data class Choose(
     val options: List<Any?>,
 ) : NonDet<Any?>
 
-fun <T> choose(options: List<T>): Program<T> = perform(Choose(options)) as Program<T>
+public fun <T> choose(options: List<T>): Program<T> = perform(Choose(options)) as Program<T>
 
 /** Prune this branch unless [condition] holds. */
-fun guard(condition: Boolean): Program<Unit> = if (condition) Program.DONE_UNIT else choose(emptyList())
+public fun guard(condition: Boolean): Program<Unit> = if (condition) Program.DONE_UNIT else choose(emptyList())
 
 /** Run every branch to completion and collect all results in order. */
-fun <A> Program<A>.collectAll(): Program<List<A>> =
+public fun <A> Program<A>.collectAll(): Program<List<A>> =
     interpret<NonDet<*>, A, List<A>>(
         transformDone = { a -> Program.Done(listOf(a)) },
         rule = { op, resume ->
@@ -67,7 +67,7 @@ fun <A> Program<A>.collectAll(): Program<List<A>> =
     )
 
 /** Binary choice between two programs. */
-fun <A> orElse(
+public fun <A> orElse(
     first: Program<A>,
     second: Program<A>,
 ): Program<A> = choose(listOf(true, false)).flatMap { pickFirst -> if (pickFirst) first else second }
@@ -81,7 +81,7 @@ fun <A> orElse(
  * by repeated splits costs stack and time proportional to the number of prior
  * splits — a bound set by handler nesting, not by the number of options.
  */
-fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
+public fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
     interpret<NonDet<*>, A, Pair<A, Program<A>>?>(
         transformDone = { a -> Program.Done(a to choose(emptyList<A>())) },
         rule = { op, resume ->
@@ -120,7 +120,7 @@ private fun <A> unsplit(split: Program<Pair<A, Program<A>>?>): Program<A> =
     }
 
 /** Committed choice: the first answer only; the rest of the search is never explored. */
-fun <A> once(search: Program<A>): Program<A> =
+public fun <A> once(search: Program<A>): Program<A> =
     search.msplit().flatMap { s ->
         if (s == null) choose(emptyList()) else Program.Done(s.first)
     }
@@ -129,7 +129,7 @@ fun <A> once(search: Program<A>): Program<A> =
  * Soft cut: if [condition] has any answer, run [then] over every one of its
  * answers; run [otherwise] only when it has none.
  */
-fun <A, B> ifte(
+public fun <A, B> ifte(
     condition: Program<A>,
     then: (A) -> Program<B>,
     otherwise: Program<B>,

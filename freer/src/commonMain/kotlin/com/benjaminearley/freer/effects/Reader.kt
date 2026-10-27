@@ -17,13 +17,13 @@ import com.benjaminearley.freer.handle
 import com.benjaminearley.freer.intercept
 import com.benjaminearley.freer.perform
 
-sealed interface Reader<out R> : Effect<R>
+public sealed interface Reader<out R> : Effect<R>
 
-data object AskEnv : Reader<String>
+public data object AskEnv : Reader<String>
 
-fun ask(): Program<String> = perform(AskEnv)
+public fun ask(): Program<String> = perform(AskEnv)
 
-fun <A> Program<A>.runReader(env: String): Program<A> =
+public fun <A> Program<A>.runReader(env: String): Program<A> =
     handle<Reader<*>, A> { op ->
         when (op) {
             is AskEnv -> env
@@ -31,7 +31,7 @@ fun <A> Program<A>.runReader(env: String): Program<A> =
     }
 
 /** Run this sub-program with the environment transformed; the override ends with it. */
-fun <A> Program<A>.local(transform: (String) -> String): Program<A> =
+public fun <A> Program<A>.local(transform: (String) -> String): Program<A> =
     ask().flatMap { e ->
         val env = transform(e)
         this@local.intercept<Reader<*>, A> { op, _ ->

@@ -17,7 +17,7 @@ import kotlin.coroutines.resume
  * restricted, so only Program binds — not arbitrary suspend calls — can occur inside.
  */
 @RestrictsSuspension
-class ProgramScope : Continuation<Any?> {
+public class ProgramScope @PublishedApi internal constructor() : Continuation<Any?> {
     override val context: CoroutineContext = EmptyCoroutineContext
 
     // What the coroutine last signalled, as plain fields rather than one object per
@@ -33,7 +33,7 @@ class ProgramScope : Continuation<Any?> {
         completed = true
     }
 
-    suspend fun <A> Program<A>.bind(): A =
+    public suspend fun <A> Program<A>.bind(): A =
         suspendCoroutineUninterceptedOrReturn { cont ->
             val program = this@bind
             if (program is Program.Done) {
@@ -115,7 +115,7 @@ private class BindStep(
  * program{} values are pure, replayable descriptions that can be interpreted any number
  * of times, under different handler stacks.
  */
-fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
+public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
     Program.Defer {
         val scope = ProgramScope()
         block.createCoroutineUnintercepted(receiver = scope, completion = scope).resume(Unit)
@@ -167,7 +167,7 @@ internal fun programResponseError(effect: Any): Nothing {
 }
 
 /** Interpret with auto-resume: the block's return value is the effect's response. */
-inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
+public inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
     interpret<E, A> { op, resume ->
         runRuleBlock({ rule(op) }) { response -> resume(checkResponse(op, response)) }
     }
@@ -192,7 +192,7 @@ internal class Proceed(
  * re-emits the effect to a downstream handler and returns its response — call it where
  * the effect should execute, and rewrite (or skip) the result as needed.
  */
-inline fun <reified E : Effect<*>, A> Program<A>.intercept(
+public inline fun <reified E : Effect<*>, A> Program<A>.intercept(
     noinline rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
 ): Program<A> =
     interpret<E, A> { op, resume ->
@@ -205,7 +205,7 @@ inline fun <reified E : Effect<*>, A> Program<A>.intercept(
  * Mind the pair order when the state and the response share a type — `response to newState`
  * is equally well-typed and silently swaps the two.
  */
-inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
+public inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
     initialState: S,
     noinline rule: suspend ProgramScope.(S, E) -> Pair<S, Any?>,
 ): Program<A> =

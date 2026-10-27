@@ -1,16 +1,26 @@
+import kotlinx.validation.ExperimentalBCVApi
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("multiplatform")
+    alias(libs.plugins.binary.compatibility.validator)
 }
 
 group = "com.benjaminearley"
 version = "0.1.0-SNAPSHOT"
 
+apiValidation {
+    @OptIn(ExperimentalBCVApi::class)
+    klib {
+        enabled = true
+    }
+}
+
 @OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class)
 kotlin {
+    explicitApi()
     jvmToolchain(17)
 
     jvm {
@@ -23,10 +33,10 @@ kotlin {
         nodejs()
     }
     macosArm64()
-    macosX64()
     iosArm64()
     iosSimulatorArm64()
     linuxX64()
+    linuxArm64()
     mingwX64()
 
     // Every target except the JVM shares nonJvmMain.

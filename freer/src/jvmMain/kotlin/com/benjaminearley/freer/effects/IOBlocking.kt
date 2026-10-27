@@ -19,7 +19,7 @@ import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
 // happens-before edge, so handler state never needs synchronization, and thunk
 // failures are rethrown here, on the caller's thread. The thunk itself may hop
 // threads internally; only interpretation is confined.
-fun <A> Program<A>.ioBlocking(): A {
+public fun <A> Program<A>.ioBlocking(): A {
     var current: Program<A> = this
     while (true) {
         when (val c = current) {

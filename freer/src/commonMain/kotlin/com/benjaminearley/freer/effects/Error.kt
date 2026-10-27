@@ -5,7 +5,7 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
-fun <A> Program<A>.raise(): Program<Result<A>> =
+public fun <A> Program<A>.raise(): Program<Result<A>> =
     interpret<Error<*>, A, Result<A>>(
         transformDone = { value -> Program.Done(Result.success(value)) },
         rule = { op, _ ->
@@ -26,17 +26,17 @@ fun <A> Program<A>.raise(): Program<Result<A>> =
  * catchError — handlers already applied beneath it never see the recovery program.
  * A recovery that logs, for example, needs the log handler outside the catch.
  */
-fun <A> Program<A>.catchError(recover: (String) -> Program<A>): Program<A> =
+public fun <A> Program<A>.catchError(recover: (String) -> Program<A>): Program<A> =
     interpret<Error<*>, A> { op, _ ->
         when (op) {
             is Raise -> recover(op.reason)
         }
     }
 
-sealed interface Error<out R> : Effect<R>
+public sealed interface Error<out R> : Effect<R>
 
-data class Raise(
+public data class Raise(
     val reason: String,
 ) : Error<Nothing>
 
-fun fail(reason: String): Program<Nothing> = perform(Raise(reason))
+public fun fail(reason: String): Program<Nothing> = perform(Raise(reason))

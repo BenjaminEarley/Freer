@@ -11,15 +11,15 @@ package com.benjaminearley.freer
 import kotlin.reflect.KClass
 
 /** The "Existential" type. We use Any? because of type erasure. */
-typealias Erased = Any?
+public typealias Erased = Any?
 
 // interpret: handle and remove an effect
-inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
+public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
     noinline rule: (E, (Erased) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpret(this, E::class, transformDone, rule)
 
-inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Erased) -> Program<A>) -> Program<A>): Program<A> =
+public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Erased) -> Program<A>) -> Program<A>): Program<A> =
     interpret(
         transformDone = { Program.Done(it) },
         rule = rule,
@@ -29,13 +29,13 @@ inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (E
  * Handle and remove an effect, threading state [S] through every step (the paper's
  * handleRelayS). The same rule contract and lazy application as [interpret] apply.
  */
-inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
+public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
     noinline transformDone: (S, A) -> Program<B>,
     noinline rule: (S, E, (S, Erased) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpretS(this, initialState, E::class, transformDone, rule)
 
-inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
+public inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
     noinline rule: (S, E, (S, Erased) -> Program<A>) -> Program<A>,
 ): Program<A> =
@@ -46,7 +46,7 @@ inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     )
 
 /** Extract the final value of a fully handled program, or throw naming the unhandled effect. */
-fun <A> Program<A>.runOrThrow(): A =
+public fun <A> Program<A>.runOrThrow(): A =
     when (val forced = force()) {
         is Program.Done -> {
             forced.value
@@ -70,7 +70,7 @@ fun <A> Program<A>.runOrThrow(): A =
  * Run a fully handled program, capturing the outcome as a [Result]: the final value on
  * success, or an [IllegalStateException] naming the unhandled effect on failure.
  */
-fun <A> Program<A>.run(): Result<A> =
+public fun <A> Program<A>.run(): Result<A> =
     when (val forced = force()) {
         is Program.Done -> {
             Result.success(forced.value)
@@ -130,21 +130,21 @@ internal sealed class Pipeline<in Input, out Output> {
  * A request that expects a response of type [R]. Effect families are the open union of
  * everything a [Program] can ask its handlers to do.
  */
-interface Effect<out R>
+public interface Effect<out R>
 
 /**
  * A pure, reusable description of a computation producing [A]. Build one with [program]
  * or [perform]/[flatMap], then apply handlers ([handle], [intercept], [handleS],
  * [interpret]) and extract the value with [runOrThrow] or [run].
  */
-sealed class Program<out A> {
+public sealed class Program<out A> {
     // Pure: The program is finished with a final value
-    data class Done<out A>(
+    public data class Done<out A>(
         val value: A,
     ) : Program<A>()
 
     // Impure: The program is paused (Suspended), waiting for a Request to be handled
-    class Suspended<Response, out A> internal constructor(
+    public class Suspended<Response, out A> internal constructor(
         internal val effect: Effect<Response>,
         internal val pipeline: Pipeline<Response, A>, // The continuation logic
     ) : Program<A>()
@@ -168,8 +168,8 @@ sealed class Program<out A> {
     // is a broken rule contract (see interpret) and fails with trampolineMisuse().
     internal data object Bounce : Program<Nothing>()
 
-    companion object {
-        val DONE_UNIT: Program<Unit> = Done(Unit)
+    public companion object {
+        public val DONE_UNIT: Program<Unit> = Done(Unit)
     }
 }
 
@@ -248,10 +248,10 @@ internal fun trampolineMisuse(): Nothing =
  * [Program.Done] value, [f] runs immediately at construction; on a suspended or
  * deferred program it is queued and runs during interpretation.
  */
-fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
+public fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
     if (this is Program.Done) f(this.value) else then(Pipeline.FnStep(f))
 
-fun <A, B> Program<A>.map(f: (A) -> B): Program<B> =
+public fun <A, B> Program<A>.map(f: (A) -> B): Program<B> =
     if (this is Program.Done) Program.Done(f(this.value)) else then(Pipeline.FnStep { Program.Done(f(it)) })
 
 // Queue [step] behind this program: a Done value runs it at once; a suspended or
@@ -291,7 +291,7 @@ private val IDENTITY_STEP =
     }
 
 /** Perform an effect: a one-step program that suspends on [effect] and produces its response. */
-fun <R> perform(effect: Effect<R>): Program<R> = Program.Suspended(effect, IDENTITY_STEP as Pipeline<R, R>)
+public fun <R> perform(effect: Effect<R>): Program<R> = Program.Suspended(effect, IDENTITY_STEP as Pipeline<R, R>)
 
 // The Virtual Machine
 // This function advances the pipeline by one step.

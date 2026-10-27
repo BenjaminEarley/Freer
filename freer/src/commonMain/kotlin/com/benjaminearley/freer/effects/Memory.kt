@@ -8,7 +8,7 @@ import com.benjaminearley.freer.interpretS
 import com.benjaminearley.freer.map
 import com.benjaminearley.freer.perform
 
-fun <A> Program<A>.memory(initialState: Int): Program<A> =
+public fun <A> Program<A>.memory(initialState: Int): Program<A> =
     handleS<Memory<*>, Int, A>(initialState) { s, op ->
         when (op) {
             is Recall -> s to s // state unchanged, return the state
@@ -17,7 +17,7 @@ fun <A> Program<A>.memory(initialState: Int): Program<A> =
     }
 
 /** Like [memory], but also returns the final state alongside the result. */
-fun <A> Program<A>.memoryWithState(initialState: Int): Program<Pair<A, Int>> =
+public fun <A> Program<A>.memoryWithState(initialState: Int): Program<Pair<A, Int>> =
     interpretS<Memory<*>, Int, A, Pair<A, Int>>(
         initialState = initialState,
         transformDone = { s, a -> Program.Done(a to s) },
@@ -38,21 +38,21 @@ fun <A> Program<A>.memoryWithState(initialState: Int): Program<Pair<A, Int>> =
  * Built from flatMap alone, so it is safe under a multi-shot handler such as
  * collectAll: each branch reads, runs and commits independently.
  */
-fun <A> Program<A>.transactional(): Program<A> =
+public fun <A> Program<A>.transactional(): Program<A> =
     recall().flatMap { snapshot ->
         this@transactional.memoryWithState(snapshot).flatMap { (result, finalState) ->
             memorize(finalState).map { result }
         }
     }
 
-sealed interface Memory<out R> : Effect<R>
+public sealed interface Memory<out R> : Effect<R>
 
-data class Memorize(
+public data class Memorize(
     val value: Int,
 ) : Memory<Unit> // Put
 
-data object Recall : Memory<Int> // Get
+public data object Recall : Memory<Int> // Get
 
-fun memorize(value: Int) = perform(Memorize(value))
+public fun memorize(value: Int): Program<Unit> = perform(Memorize(value))
 
-fun recall() = perform(Recall)
+public fun recall(): Program<Int> = perform(Recall)

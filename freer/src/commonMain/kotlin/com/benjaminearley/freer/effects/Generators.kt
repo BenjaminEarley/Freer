@@ -13,28 +13,28 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
-sealed interface Emit<out R> : Effect<R>
+public sealed interface Emit<out R> : Effect<R>
 
-data class Yield(
+public data class Yield(
     val value: Int,
 ) : Emit<Unit>
 
-fun yieldValue(value: Int): Program<Unit> = perform(Yield(value))
+public fun yieldValue(value: Int): Program<Unit> = perform(Yield(value))
 
-sealed class Status<out A> {
-    data class Finished<out A>(
+public sealed class Status<out A> {
+    public data class Finished<out A>(
         val result: A,
     ) : Status<A>()
 
-    class Yielded<out A>(
-        val value: Int,
-        val resume: () -> Program<Status<A>>,
+    public class Yielded<out A>(
+        public val value: Int,
+        public val resume: () -> Program<Status<A>>,
     ) : Status<A>()
 }
 
 // The continuation is captured and invoked after the rule has returned — a
 // deferred resume, so it produces a real Program each time it's called.
-fun <A> Program<A>.coroutine(): Program<Status<A>> =
+public fun <A> Program<A>.coroutine(): Program<Status<A>> =
     interpret<Emit<*>, A, Status<A>>(
         transformDone = { a -> Program.Done(Status.Finished(a)) },
         rule = { op, resume ->
