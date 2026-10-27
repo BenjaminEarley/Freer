@@ -23,8 +23,7 @@ Running main.kt:
 
 Running the tests and the benchmark:
 ```sh
-./gradlew :freer:runTrampolineTest
-./gradlew :freer:runSemanticsTest
+./gradlew check
 ./gradlew :freer:runBenchmark
 ```
 
