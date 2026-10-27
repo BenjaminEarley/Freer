@@ -8,8 +8,6 @@ Programs are pure data structures that describe computations with effects. Effec
 
 ## Installation
 
-The first release, `0.1.0`, is not on Maven Central yet; the coordinates below take effect once it is published.
-
 In a Kotlin Multiplatform project, add the library to `commonMain`:
 
 ```kotlin
