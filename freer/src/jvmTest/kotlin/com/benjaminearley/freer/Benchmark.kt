@@ -38,7 +38,7 @@ fun main() {
     benchmarkSizes(::buildAndRunRight)
 
     println()
-    println("For a naive-vs-Program comparison, see src/examples/BindChainComparison.kt (demo Scenario 5).")
+    println("For a naive-vs-Program comparison, see examples/src/main/kotlin/com/benjaminearley/freer/examples/BindChainComparison.kt (demo Scenario 5).")
 }
 
 // Each size runs `REPS` times with a GC between runs, and the median is
