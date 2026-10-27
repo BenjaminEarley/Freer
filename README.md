@@ -30,6 +30,8 @@ dependencies {
 }
 ```
 
+Maven and other non-Gradle JVM builds do not read Gradle module metadata, so they depend on the JVM artifact directly: `com.benjaminearley:freer-jvm:0.1.0`.
+
 Targets: JVM (bytecode level 11), Wasm (`wasmJs`), `macosArm64`, `iosArm64`, `iosSimulatorArm64`, `linuxX64`, `linuxArm64` and `mingwX64`. The core API lives in `com.benjaminearley.freer`, the built-in effects in `com.benjaminearley.freer.effects`. Everything is common code except `ioBlocking()`, which is JVM-only.
 
 ## When to use it
@@ -114,7 +116,7 @@ Because programs are pure descriptions, `greeter` can be run again — with the 
 | `.runOrThrow()` | Extract the final value, or fail naming the unhandled effect |
 | `.run()` | Extract the outcome as a `Result` — success, or failure naming the unhandled effect |
 
-Handlers dispatch on the erased effect class: `handle<Get<String>, A>` also matches a `Get<Int>`, and the mismatch surfaces as a `ClassCastException` at the use site. Always dispatch on the star-projected family (`Get<*>`, `KVStore<*>`).
+Handlers dispatch on the erased effect class: for a generic effect `Fetch<T>`, `handle<Fetch<String>, A>` also matches a `Fetch<Int>`, and the mismatch surfaces as a `ClassCastException` at the use site. Always dispatch on the star-projected family (`Fetch<*>`, `Console<*>`).
 
 The low-level `interpret` hands the rule a `resume` continuation with a contract: called directly (inside the rule), it must be called at most once and its result returned unchanged — the interpreter trampolines it for stack safety and throws on misuse. To transform or combine results, call `resume` from a genuinely deferred context (e.g. bind it inside a `program { }` block — `flatMap` on an already-`Done` program still runs eagerly), or just use `handle`/`intercept`. Calling `resume` from a deferred context is stack-safe: a deferred program is never forced from inside a step or a bind, so a rule that binds `resume` on every effect still runs on a constant stack. A direct `resume()` call returns to the rule before the rest of the program has been forced, so code after it in the rule runs before the continuation's next lazy block; effect order is unaffected.
 
@@ -211,7 +213,7 @@ Exceptions are *not* part of the model: any exception raised while a bound progr
 The library ships general-purpose effects in `com.benjaminearley.freer.effects`, under `freer/src/commonMain/kotlin/com/benjaminearley/freer/effects/` (plus `ioBlocking()` in `freer/src/jvmMain/kotlin/com/benjaminearley/freer/effects/IOBlocking.kt`):
 
 - **State** (`State.kt`) — `getState<S>()`, `putState(value)` and `modifyState { s -> ... }`, handled by `runState(initial)`, or by `runStateWithFinal(initial)`, which also returns the final state as a `Pair`. `transactional()` runs a sub-program as a transaction: its writes hit a local copy of the state, and the commit only runs if the program completes.
-- **Reader** (`Reader.kt`) — `ask<E>()` reads an environment supplied by `runReader(env)`; `local { }` overrides the value for one sub-program via `intercept`, without consuming the effect.
+- **Reader** (`Reader.kt`) — `ask<E>()` reads an environment supplied by `runReader(env)`; `local { }` is a handler built on `interpret` that answers the `Ask`s inside its sub-program itself with the transformed environment, while `Ask`s outside the sub-program still reach the downstream handler.
 - **Error** (`Error.kt`) — `fail(reason)`, `raise()` and `catchError { }`, see [Errors & Exceptions](#errors--exceptions).
 - **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a `collectAll()` handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. `guard(condition)` prunes a branch, `orElse(first, second)` is a binary choice. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are one-shot coroutines, so one fails under these handlers only when its *own* continuation is resumed more than once: the block binds the choice itself, proceeds on it, or binds a sub-program that performs it. A `program { }` created inside a `flatMap` closure after the choice is fine (each branch gets a fresh one), as is a rule that answers without suspending or middleware on an unrelated effect — `local` and `transactional` are built this way and work under `collectAll`.
 - **Generators** (`Generators.kt`) — `yieldValue(value)` performs an `Emit.Yield` effect, and the `coroutine()` handler reifies the continuation as data (`Status.Yielded` holds the yielded value and the rest of the program as a callable value); the driver decides when to resume.
@@ -255,26 +257,28 @@ while (status is Status.Yielded) {
 
 ## Performance
 
-The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `freer/src/jvmTest/kotlin/com/benjaminearley/freer/Benchmark.kt`, run with `./gradlew :freer:runBenchmark`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `freer/src/commonTest/kotlin/com/benjaminearley/freer/TrampolineTest.kt`). The demo's Scenario 5 (`examples/src/main/kotlin/com/benjaminearley/freer/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). In absolute terms, measured on JDK 26 on an Apple-silicon Mac at 1M effects: about 10 ns and 140 bytes per effect through the `program { }` DSL and `handle`, roughly 2x a raw `suspend` loop doing the same work and 1.4x on the left-associated chain of Scenario 5. That gap is the reified continuation itself — a handful of small objects per effect — which is what makes a program replayable, interceptable, and multi-shot. The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
+The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `freer/src/jvmTest/kotlin/com/benjaminearley/freer/Benchmark.kt`, run with `./gradlew :freer:runBenchmark`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `freer/src/commonTest/kotlin/com/benjaminearley/freer/TrampolineTest.kt`). The demo's Scenario 5 (`examples/src/main/kotlin/com/benjaminearley/freer/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). In absolute terms, measured on JDK 26 on an Apple-silicon Mac at 1M effects: about 10 ns and 130 bytes per effect through the `program { }` DSL and `handle`, roughly 2x a raw `suspend` loop doing the same work and 1.4x on the left-associated chain of Scenario 5. That gap is the reified continuation itself — a handful of small objects per effect — which is what makes a program replayable, interceptable, and multi-shot. The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
 
 ## Project layout
 
-- `freer/` — the library: common code in `freer/src/commonMain/`, JVM-only code (including `ioBlocking()`) in `freer/src/jvmMain/`, and the implementation shared by Wasm and native in `freer/src/nonJvmMain/`. Tests in `freer/src/commonTest/` (run on every target) and `freer/src/jvmTest/` (`IoBlockingTest.kt` and the benchmark harness). Public API dumps in `freer/api/`.
+- `freer/` — the library: common code in `freer/src/commonMain/`, JVM-only code (including `ioBlocking()`) in `freer/src/jvmMain/`, and the implementation shared by Wasm and native in `freer/src/nonJvmMain/`. Tests in `freer/src/commonTest/` (run on the JVM, Wasm on Node, `linuxX64`, `macosArm64`, `iosSimulatorArm64` and `mingwX64`; `iosArm64` and `linuxArm64` are compiled but not tested, as CI has no hardware to run them) and `freer/src/jvmTest/` (`IoBlockingTest.kt` and the benchmark harness). Public API dumps in `freer/api/`.
 - `examples/` — the JVM demo app.
-- `.github/workflows/` — `ci.yml` (a Linux job for the JVM, Wasm and `linuxX64` tests, the API check and the demo; a macOS job for the macOS and iOS simulator tests that also assembles every Apple target) and `release.yml` (tag-driven publishing to Maven Central).
+- `.github/workflows/` — `ci.yml` (a Linux job for the JVM, Wasm and `linuxX64` tests, the API check and the demo; a macOS job for the macOS and iOS simulator tests that also assembles every Apple target; a Windows job for the `mingwX64` tests) and `release.yml` (tag-driven publishing to Maven Central).
 
 ## Contributing / Releasing
 
 ```sh
-./gradlew check                 # tests on JVM, Node Wasm and the host native target, plus the API check
+./gradlew check                 # tests on JVM, Node Wasm and the host's native targets, plus the API check
 ./gradlew :examples:run         # the demo
 ./gradlew :freer:runBenchmark   # the JVM benchmark harness
 ./gradlew publishToMavenLocal   # install the current version into ~/.m2
 ```
 
+On Linux, `check` runs the native tests for `linuxX64`; on an Apple-silicon Mac, for `macosArm64` and also `iosSimulatorArm64`. Building the Apple targets needs Xcode installed. The `mingwX64` tests only run on Windows, in the CI's Windows job.
+
 The library builds in explicit API mode, so every public declaration needs an explicit visibility modifier and return type. The binary-compatibility validator checks the public API against the dumps in `freer/api/` as part of `check`; when you change the public API intentionally, run `./gradlew apiDump` and commit the updated dumps with the change.
 
-`main` stays on a `-SNAPSHOT` version (in `gradle.properties`). To release, push a tag `vX.Y.Z`: the release workflow takes the version from the tag, runs `check`, then signs and publishes to Maven Central. It needs four repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_PASSWORD`.
+`main` stays on a `-SNAPSHOT` version (in `gradle.properties`). To release, push a tag `vX.Y.Z` on a commit that is already on `main`: the release workflow refuses any other commit, takes the version from the tag, runs `check`, then signs and publishes to Maven Central. It needs four repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_PASSWORD`.
 
 ## License
 
