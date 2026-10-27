@@ -38,9 +38,25 @@ class ProgramScope : Continuation<Any?> {
 
     suspend fun <A> Program<A>.bind(): A =
         suspendCoroutineUninterceptedOrReturn { cont ->
-            state = State.Suspended(this@bind as Program<Any?>, cont as Continuation<Any?>)
-            COROUTINE_SUSPENDED
+            val program = this@bind
+            if (program is Program.Done) {
+                // Already a value: hand it straight back without suspending, instead of
+                // parking the program in `state` for buildProgram to resume one step later.
+                program.value
+            } else {
+                suspendOn(program, cont)
+            }
         }
+
+    // Park [program] as the pending bind and signal the coroutine behind [cont] to
+    // suspend; buildProgram sequences the program and resumes [cont] with its value.
+    internal fun suspendOn(
+        program: Program<*>,
+        cont: Continuation<*>,
+    ): Any? {
+        state = State.Suspended(program, cont as Continuation<Any?>)
+        return COROUTINE_SUSPENDED
+    }
 
     internal fun <A> buildProgram(): Program<A> {
         while (true) {
@@ -145,6 +161,21 @@ inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend P
         }
     }
 
+// The proceed() continuation handed to an intercept rule: re-emits the intercepted
+// effect and yields the downstream response, exactly as `perform(effect).bind()`
+// would. A class rather than a suspend lambda capturing the effect: the object holds
+// only the effect reference, and suspending through the intrinsic directly needs no
+// state machine, whereas a suspend lambda is copied together with its continuation
+// fields on every invocation. It cannot call bind() itself — a suspend function
+// outside the restricted scope may not — so it parks the program via suspendOn.
+@PublishedApi
+internal class Proceed(
+    private val effect: Effect<*>,
+) : suspend (ProgramScope) -> Any? {
+    override suspend fun invoke(scope: ProgramScope): Any? =
+        suspendCoroutineUninterceptedOrReturn { cont -> scope.suspendOn(perform(effect), cont) }
+}
+
 /**
  * Middleware (the paper's interpose): observe an effect without consuming it. proceed()
  * re-emits the effect to a downstream handler and returns its response — call it where
@@ -154,7 +185,7 @@ inline fun <reified E : Effect<*>, A> Program<A>.intercept(
     noinline rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
 ): Program<A> =
     interpret<E, A> { op, resume ->
-        val proceed: suspend ProgramScope.() -> Any? = { perform(op).bind() }
+        val proceed = Proceed(op)
         when (val result = runRuleBlock { rule(op, proceed) }) {
             is Program.Done -> resume(checkResponse(op, result.value))
             is Program.Suspended<*, *> -> result.flatMap { response -> resume(checkResponse(op, response)) }

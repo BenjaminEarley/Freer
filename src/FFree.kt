@@ -413,26 +413,11 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
 
                 if (targetClass.isInstance(effect)) {
                     // MATCH: We found the effect we are looking for.
-                    var trampolineNext: Program<A>? = null
-                    var direct = true
+                    val resumer = Resumer(pipeline, targetClass, transformDone, rule)
+                    val result = rule(effect as Target, resumer)
+                    resumer.direct = false // Any future calls to this continuation are deferred
 
-                    val result =
-                        rule(effect as Target) { response ->
-                            if (direct && trampolineNext != null) directResumeCalledTwice()
-                            val next = resume(pipeline, response)
-                            if (direct) {
-                                // Called directly by the rule — trampoline
-                                trampolineNext = next
-                                Program.Bounce
-                            } else {
-                                // Called from a deferred context (e.g. inside flatMap) — recurse normally
-                                interpreterLoop(next, targetClass, transformDone, rule)
-                            }
-                        }
-
-                    direct = false // Any future calls to this continuation are deferred
-
-                    val next = trampolineNext
+                    val next = resumer.next
                     if (result is Program.Bounce) {
                         program = next ?: trampolineMisuse()
                         continue
@@ -449,6 +434,36 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
                     return Program.Suspended(effect, forwardedPipeline)
                 }
             }
+        }
+    }
+}
+
+// The continuation interpreterLoop hands to a rule: one object per matched effect,
+// holding the trampoline's bookkeeping (`next`, `direct`) as plain fields rather
+// than as a lambda plus a box for each captured variable.
+private class Resumer<Target : Effect<*>, A, B>(
+    private val pipeline: Pipeline<Erased, A>,
+    private val targetClass: Class<Target>,
+    private val transformDone: (A) -> Program<B>,
+    private val rule: (Target, (Erased) -> Program<B>) -> Program<B>,
+) : (Erased) -> Program<B> {
+    // The resumed program recorded by a direct call, for the loop to iterate on.
+    var next: Program<A>? = null
+
+    // True while the rule is running; the loop clears it once the rule returns, so
+    // every later call is a deferred resume.
+    var direct = true
+
+    override fun invoke(response: Erased): Program<B> {
+        if (direct && next != null) directResumeCalledTwice()
+        val resumed = resume(pipeline, response)
+        return if (direct) {
+            // Called directly by the rule — trampoline
+            next = resumed
+            Program.Bounce
+        } else {
+            // Called from a deferred context (e.g. inside flatMap) — recurse normally
+            interpreterLoop(resumed, targetClass, transformDone, rule)
         }
     }
 }
@@ -486,29 +501,14 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                 val pipeline = suspended.pipeline
 
                 if (targetClass.isInstance(effect)) {
-                    var trampolineNext: Program<A>? = null
-                    var trampolineState: Any? = null
-                    var direct = true
+                    val resumer = ResumerS(pipeline, targetClass, transformDone, rule)
+                    val result = rule(state, effect as Target, resumer)
+                    resumer.direct = false
 
-                    val result =
-                        rule(state, effect as Target) { newState, response ->
-                            if (direct && trampolineNext != null) directResumeCalledTwice()
-                            val next = resume(pipeline, response)
-                            if (direct) {
-                                trampolineNext = next
-                                trampolineState = newState
-                                Program.Bounce
-                            } else {
-                                interpreterLoopS(next, newState, targetClass, transformDone, rule)
-                            }
-                        }
-
-                    direct = false
-
-                    val next = trampolineNext
+                    val next = resumer.next
                     if (result is Program.Bounce) {
                         program = next ?: trampolineMisuse()
-                        state = trampolineState as S
+                        state = resumer.nextState as S
                         continue
                     }
                     if (next != null) directResumeDiscarded()
@@ -527,6 +527,34 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                     return Program.Suspended(effect, forwardedPipeline)
                 }
             }
+        }
+    }
+}
+
+// The continuation interpreterLoopS hands to a rule: Resumer plus the state a
+// direct call resumes with.
+private class ResumerS<Target : Effect<*>, S, A, B>(
+    private val pipeline: Pipeline<Erased, A>,
+    private val targetClass: Class<Target>,
+    private val transformDone: (S, A) -> Program<B>,
+    private val rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
+) : (S, Erased) -> Program<B> {
+    var next: Program<A>? = null
+    var nextState: Any? = null
+    var direct = true
+
+    override fun invoke(
+        newState: S,
+        response: Erased,
+    ): Program<B> {
+        if (direct && next != null) directResumeCalledTwice()
+        val resumed = resume(pipeline, response)
+        return if (direct) {
+            next = resumed
+            nextState = newState
+            Program.Bounce
+        } else {
+            interpreterLoopS(resumed, newState, targetClass, transformDone, rule)
         }
     }
 }
