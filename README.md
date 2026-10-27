@@ -87,6 +87,8 @@ Because programs are pure descriptions, `greeter` can be run again — with the 
 | `.runOrThrow()` | Extract the final value, or fail naming the unhandled effect |
 | `.run()` | Extract the outcome as a `Result` — success, or failure naming the unhandled effect |
 
+Handlers dispatch on the erased effect class: `handle<Get<String>, A>` also matches a `Get<Int>`, and the mismatch surfaces as a `ClassCastException` at the use site. Always dispatch on the star-projected family (`Get<*>`, `KVStore<*>`).
+
 The low-level `interpret` hands the rule a `resume` continuation with a contract: called directly (inside the rule), it must be called at most once and its result returned unchanged — the interpreter trampolines it for stack safety and throws on misuse. To transform or combine results, call `resume` from a genuinely deferred context (e.g. bind it inside a `program { }` block — `flatMap` on an already-`Done` program still runs eagerly), or just use `handle`/`intercept`.
 
 Handler responses are unchecked at runtime: nothing ties a rule's return value to the effect's declared response type `R`, so a wrong response surfaces later as a `ClassCastException` at the value's use site, not at the handler. Watch for rules whose last expression isn't the intended response — e.g. a collection mutator returning `Boolean` from a rule for a `Unit` effect.
@@ -158,22 +160,31 @@ fun <A> Program<A>.uppercaseConsole(): Program<A> =
 
 A middleware can also perform *new* effects — the demo's `auditKVStore` emits `Log` effects. Handler order matters then: the handler for the emitted effects must sit downstream of the intercept. `prog.auditKVStore().kvStore(db).logger()` works; applying `logger()` before `auditKVStore()` leaves the audit logs unhandled.
 
-Middleware has a real per-effect cost: `proceed()` re-emits the effect for a full downstream dispatch round trip, measuring several times a plain handler — keep `intercept` off hot-path effects.
+Middleware has a real per-effect cost: `proceed()` re-emits the effect for a full downstream dispatch round trip, measuring several times a plain handler — keep `intercept` off hot-path effects. A stateful `handleS` costs roughly twice a plain `handle` per effect, for the state pair and boxing.
+
+Middleware on a multi-shot effect (such as `NonDet`, see below) cannot use `intercept`: `proceed()` suspends the rule block, and the downstream handler then resumes that one-shot block once per option. Write it with `interpret` instead, re-emitting the effect and continuing with `flatMap`, which is replayable:
+
+```kotlin
+fun <A> Program<A>.passChoices(): Program<A> =
+    interpret<NonDet<*>, A> { op, resume -> perform(op).flatMap { resume(it) } }
+```
+
+Middleware on an *unrelated* effect, or a rule that answers without calling `proceed()`, is fine under a multi-shot handler.
 
 ## Errors & Exceptions
 
-Failures are effects too: `fail(reason)` performs a `Raise` effect, and `raise()` materializes the program's outcome as a `Result`. `catchError { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the recovery program replaces it — a failure inside the recovery propagates to the next outer handler (see `effects/Error.kt` and the demo).
+Failures are effects too: `fail(reason)` performs a `Raise` effect, and `raise()` materializes the program's outcome as a `Result`. `catchError { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the recovery program replaces it — a failure inside the recovery propagates to the next outer handler (see `effects/Error.kt` and the demo). Effects the recovery performs are only seen by handlers applied *after* the `catchError`, so a recovery that logs needs the log handler outside the catch.
 
 Handler order decides failure semantics: applying `raise()` before a stateful handler keeps the state written before the failure, applying it after rolls the whole result back — transactional behavior is a call-site choice, not a handler feature (Scenario 7 in the demo).
 
-JVM exceptions are *not* part of the model: an exception thrown by a handler or an IO thunk propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. Use effects (`Raise`/`Result`) for recoverable failures.
+JVM exceptions are *not* part of the model: any exception raised while a bound program is evaluated — thrown by a handler, an IO thunk, a bound pure `program { }`, or a `flatMap` lambda — propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. `.run()` does not catch it either: its `Result` captures only unhandled-effect failures, so a handler exception propagates out of `run()` as well. Use effects (`Raise`/`Result`) for recoverable failures.
 
 ## More Examples
 
 `src/examples/` goes beyond the accounting demo:
 
 - **Generators** (`Generators.kt`) — a `Yield` effect whose handler reifies the continuation as data (`Status.Yielded` holds the rest of the program as a callable value); the driver decides when to resume.
-- **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). Programs under these must be hand-built `perform`/`flatMap` chains, since `program { }` blocks are single-shot per interpretation.
+- **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are one-shot coroutines, so one fails under these handlers only when its *own* continuation is resumed more than once: the block binds the choice itself, proceeds on it, or binds a sub-program that performs it. A `program { }` created inside a `flatMap` closure after the choice is fine (each branch gets a fresh one), as is a rule that answers without suspending or middleware on an unrelated effect — `local` and `transactional` are built this way and work under `collectAll`.
 - **Error recovery, handler ordering & transactions** (`ErrorHandling.kt`) — `catchError`, the state-rollback-vs-state-survives ordering demo, and `transactional()` (writes hit a local copy of the state; the commit only runs if the program completes).
 - **Reader with `local`** (`Reader.kt`) — an environment effect where `local { }` overrides the value for one sub-program via `intercept`, without consuming the effect.
 

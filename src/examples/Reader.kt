@@ -2,13 +2,17 @@
  * A Reader effect: ask for a value from the environment.
  *
  * local() overrides the environment for one sub-program without consuming the
- * effect: an intercept answers Ask directly instead of proceeding downstream,
- * so everything outside the override still gets the downstream answer.
+ * effect: it asks downstream once for the current value, then an intercept answers
+ * Ask with the transformed value instead of proceeding downstream, so everything
+ * outside the override still gets the downstream answer. Both steps are plain
+ * flatMap and a rule that never suspends, so local() also works under a
+ * multi-shot handler such as collectAll.
  */
 package ffree.examples
 
 import ffree.Effect
 import ffree.Program
+import ffree.flatMap
 import ffree.handle
 import ffree.intercept
 import ffree.perform
@@ -30,14 +34,13 @@ fun <A> Program<A>.runReader(env: String): Program<A> =
 
 /** Run this sub-program with the environment transformed; the override ends with it. */
 fun <A> Program<A>.local(transform: (String) -> String): Program<A> =
-    program {
-        val env = transform(ask().bind())
-        this@local
-            .intercept<Reader<*>, A> { op, _ ->
-                when (op) {
-                    is AskEnv -> env
-                }
-            }.bind()
+    ask().flatMap { e ->
+        val env = transform(e)
+        this@local.intercept<Reader<*>, A> { op, _ ->
+            when (op) {
+                is AskEnv -> env
+            }
+        }
     }
 
 fun readerExample() {

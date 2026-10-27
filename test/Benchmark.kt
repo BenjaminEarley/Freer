@@ -44,7 +44,7 @@ fun main() {
     benchmarkSizes(::buildAndRunRight)
 
     println()
-    println("Without the type-aligned queue, left-associated chains will hang.")
+    println("For a naive-vs-Program comparison, see src/examples/BindChainComparison.kt (demo Scenario 5).")
 }
 
 // Each size runs `REPS` times with a GC between runs, and the median is

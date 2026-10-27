@@ -27,6 +27,7 @@ import ffree.effects.performIO
 import ffree.effects.raise
 import ffree.effects.recall
 import ffree.effects.transactional
+import ffree.examples.NonDet
 import ffree.examples.Status
 import ffree.examples.accounting.effects.get
 import ffree.examples.accounting.effects.kvStore
@@ -641,6 +642,41 @@ suspend fun main() {
         } catch (e: IllegalStateException) {
             check(e.message?.contains("single-shot") == true) { "Unexpected: ${e.message}" }
         }
+    }
+
+    semTest("local is multi-shot safe: every branch sees the override, the outside does not") {
+        val result =
+            ask()
+                .flatMap { before ->
+                    choose(listOf(1, 2))
+                        .flatMap { n -> ask().map { env -> "$env$n" } }
+                        .local { it.uppercase() }
+                        .flatMap { inner -> ask().map { after -> "$before|$inner|$after" } }
+                }.runReader("e")
+                .collectAll()
+                .runOrThrow()
+        check(result == listOf("e|E1|e", "e|E2|e")) { "got $result" }
+    }
+
+    semTest("transactional is multi-shot safe: each branch commits its own final state") {
+        val result =
+            choose(listOf(1, 2))
+                .flatMap { n -> memorize(n * 10) }
+                .transactional()
+                .flatMap { recall() }
+                .memory(0)
+                .collectAll()
+                .runOrThrow()
+        check(result == listOf(10, 20)) { "got $result" }
+    }
+
+    semTest("middleware on a multi-shot effect built with interpret and perform returns all branches") {
+        val result =
+            choose(listOf(1, 2, 3))
+                .interpret<NonDet<*>, Int> { op, resume -> perform(op).flatMap { resume(it) } }
+                .collectAll()
+                .runOrThrow()
+        check(result == listOf(1, 2, 3)) { "got $result" }
     }
 
     println()

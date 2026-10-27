@@ -2,10 +2,11 @@ package ffree.effects
 
 import ffree.Effect
 import ffree.Program
+import ffree.flatMap
 import ffree.handleS
 import ffree.interpretS
+import ffree.map
 import ffree.perform
-import ffree.program
 
 fun <A> Program<A>.memory(initialState: Int): Program<A> =
     handleS<Memory<*>, Int, A>(initialState) { s, op ->
@@ -34,13 +35,14 @@ fun <A> Program<A>.memoryWithState(initialState: Int): Program<Pair<A, Int>> =
  * committed downstream only if the program completes. If it fails part-way
  * (e.g. a [ffree.effects.Raise] handled outside), the commit is part of the
  * abandoned continuation and never runs — the downstream state stays untouched.
+ * Built from flatMap alone, so it is safe under a multi-shot handler such as
+ * collectAll: each branch reads, runs and commits independently.
  */
 fun <A> Program<A>.transactional(): Program<A> =
-    program {
-        val snapshot = recall().bind()
-        val (result, finalState) = this@transactional.memoryWithState(snapshot).bind()
-        memorize(finalState).bind()
-        result
+    recall().flatMap { snapshot ->
+        this@transactional.memoryWithState(snapshot).flatMap { (result, finalState) ->
+            memorize(finalState).map { result }
+        }
     }
 
 sealed interface Memory<out R> : Effect<R>
