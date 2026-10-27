@@ -18,7 +18,7 @@
  * Three consequences worth knowing: d sequential choices of s options explore
  * s^d branches — there is no implicit pruning. A stateful handler applied inside
  * collectAll backtracks its state per branch; applied outside, one global state
- * threads across all branches. And catchError inside collectAll recovers a failed
+ * threads across all branches. And recover inside collectAll recovers a failed
  * branch in isolation; outside, one failed branch replaces the entire collection.
  */
 @file:Suppress("UNCHECKED_CAST")

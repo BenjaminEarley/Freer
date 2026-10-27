@@ -202,11 +202,11 @@ Middleware on an *unrelated* effect, or a rule that answers without calling `pro
 
 ## Errors & Exceptions
 
-Failures are effects too: `fail(reason)` performs an `Error.Raise` effect, and `raise()` materializes the program's outcome as a `Result`. `catchError { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the recovery program replaces it — a failure inside the recovery propagates to the next outer handler (see `Error.kt` in the effects package and the demo). Effects the recovery performs are only seen by handlers applied *after* the `catchError`, so a recovery that logs needs the log handler outside the catch.
+Failures are effects too: `raise(reason)` performs a `Failure.Raise` effect, and `attempt()` materializes the program's outcome as a `Result`. `recover { reason -> ... }` recovers in place: the failed program is abandoned from the failure point and the fallback program replaces it — a failure inside the fallback propagates to the next outer handler (see `Failure.kt` in the effects package and the demo). Effects the fallback performs are only seen by handlers applied *after* the `recover`, so a fallback that logs needs the log handler outside the `recover`. The names `raise`, `attempt` and `recover` follow Arrow's naming for the same operations.
 
-Handler order decides failure semantics: applying `raise()` before a stateful handler keeps the state written before the failure, applying it after rolls the whole result back — transactional behavior is a call-site choice, not a handler feature (Scenario 7 in the demo).
+Handler order decides failure semantics: applying `attempt()` before a stateful handler keeps the state written before the failure, applying it after rolls the whole result back — transactional behavior is a call-site choice, not a handler feature (Scenario 7 in the demo).
 
-Exceptions are *not* part of the model: any exception raised while a bound program is evaluated — thrown by a handler, an IO thunk, a bound pure `program { }`, or a `flatMap` lambda — propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. `.run()` does not catch it either: its `Result` captures only unhandled-effect failures, so a handler exception propagates out of `run()` as well. Use effects (`Error.Raise`/`Result`) for recoverable failures.
+Exceptions are *not* part of the model: any exception raised while a bound program is evaluated — thrown by a handler, an IO thunk, a bound pure `program { }`, or a `flatMap` lambda — propagates straight out of the interpretation. `try/catch` around `.bind()` inside `program { }` can never catch it, and `finally` blocks in the abandoned program do not run. `.run()` does not catch it either: its `Result` captures only unhandled-effect failures, so a handler exception propagates out of `run()` as well. Use effects (`raise`/`attempt`/`recover`) for recoverable failures.
 
 ## Built-in Effects
 
@@ -214,9 +214,9 @@ The library ships general-purpose effects in `com.benjaminearley.freer.effects`,
 
 - **State** (`State.kt`) — `getState<S>()`, `putState(value)` and `modifyState { s -> ... }`, handled by `runState(initial)`, or by `runStateWithFinal(initial)`, which also returns the final state as a `Pair`. `transactional()` runs a sub-program as a transaction: its writes hit a local copy of the state, and the commit only runs if the program completes.
 - **Reader** (`Reader.kt`) — `ask<E>()` reads an environment supplied by `runReader(env)`; `local { }` is a handler built on `interpret` that answers the `Ask`s inside its sub-program itself with the transformed environment, while `Ask`s outside the sub-program still reach the downstream handler.
-- **Error** (`Error.kt`) — `fail(reason)`, `raise()` and `catchError { }`, see [Errors & Exceptions](#errors--exceptions).
+- **Failure** (`Failure.kt`) — `raise(reason)`, `attempt()` and `recover { }`, see [Errors & Exceptions](#errors--exceptions).
 - **Nondeterminism & committed choice** (`NonDet.kt`) — `choose(options)` with a `collectAll()` handler that resumes the *same* captured continuation once per option and collects every branch's result; multi-shot resumption like this is impossible with one-shot `suspend` coroutines. `guard(condition)` prunes a branch, `orElse(first, second)` is a binary choice. Plus `msplit` (first answer + rest-of-search as a program), `once` (commit to the first answer, prune the rest), and `ifte` (soft cut). `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are one-shot coroutines, so one fails under these handlers only when its *own* continuation is resumed more than once: the block binds the choice itself, proceeds on it, or binds a sub-program that performs it. A `program { }` created inside a `flatMap` closure after the choice is fine (each branch gets a fresh one), as is a rule that answers without suspending or middleware on an unrelated effect — `local` and `transactional` are built this way and work under `collectAll`.
-- **Generators** (`Generators.kt`) — `yieldValue(value)` performs an `Emit.Yield` effect, and the `coroutine()` handler reifies the continuation as data (`Status.Yielded` holds the yielded value and the rest of the program as a callable value); the driver decides when to resume.
+- **Generators** (`Generators.kt`) — `yieldValue(value)` performs an `Emit.Yield` effect, and the `generator()` handler reifies the continuation as data (`Generator.Yielded` holds the yielded value and the rest of the program as a callable value); the driver decides when to resume.
 - **IO** (`IO.kt`, `IOBlocking.kt`) — `performIO { }` and the edge runners `io()` and `ioBlocking()`, see [Async I/O](#async-io).
 
 The state and reader types are erased: `getState<S>()` and `ask<E>()` trust the caller, and a handler stack carries one State type and one Reader type. Call sites sometimes need explicit type arguments:
@@ -239,10 +239,10 @@ val countdown: Program<String> = program {
     for (i in 3 downTo 1) yieldValue(i).bind()
     "liftoff"
 }
-var status = countdown.coroutine<Int, String>().runOrThrow()
-while (status is Status.Yielded) {
-    println(status.value)                           // 3, 2, 1
-    status = status.resume().runOrThrow()
+var step = countdown.generator<Int, String>().runOrThrow()
+while (step is Generator.Yielded) {
+    println(step.value)                             // 3, 2, 1
+    step = step.resume().runOrThrow()
 }
 ```
 
@@ -252,7 +252,7 @@ while (status is Status.Yielded) {
 
 - **Accounting** (`accounting/`) — a money transfer over custom `KVStore`, `FraudCheck` and `Logger` effects, with audit middleware, async I/O and error handling.
 - **Bind-chain comparison** (`BindChainComparison.kt`) — Scenario 5, see [Performance](#performance).
-- **Error recovery, handler ordering & transactions** (`ErrorHandling.kt`) — `catchError`, the state-rollback-vs-state-survives ordering demo, and `transactional()`.
+- **Error recovery, handler ordering & transactions** (`ErrorHandling.kt`) — `recover`, the state-rollback-vs-state-survives ordering demo, and `transactional()`.
 - **Generators** (`GeneratorExample.kt`), **nondeterminism & committed choice** (`NonDetExamples.kt`) and **Reader with `local`** (`ReaderExample.kt`) — small drivers for the built-in effects.
 
 ## Performance

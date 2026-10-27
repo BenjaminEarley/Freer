@@ -43,7 +43,7 @@ public fun <S, A> Program<A>.runStateWithFinal(initial: S): Program<Pair<A, S>> 
  * Run this program as a transaction: its State effects hit a local copy of the
  * state, seeded by reading the downstream handler, and the final local state is
  * committed downstream only if the program completes. If it fails part-way
- * (e.g. a [com.benjaminearley.freer.effects.Error.Raise] handled outside), the commit is part of the
+ * (e.g. a [Failure.Raise] handled outside), the commit is part of the
  * abandoned continuation and never runs — the downstream state stays untouched.
  * Built from flatMap alone, so it is safe under a multi-shot handler such as
  * collectAll: each branch reads, runs and commits independently.

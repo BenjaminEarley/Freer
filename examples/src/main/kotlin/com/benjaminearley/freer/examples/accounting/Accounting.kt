@@ -1,7 +1,7 @@
 package com.benjaminearley.freer.examples.accounting
 
 import com.benjaminearley.freer.Program
-import com.benjaminearley.freer.effects.fail
+import com.benjaminearley.freer.effects.attempt
 import com.benjaminearley.freer.effects.ioBlocking
 import com.benjaminearley.freer.effects.raise
 import com.benjaminearley.freer.examples.accounting.effects.auditFraudCheck
@@ -38,7 +38,7 @@ fun accountingExample() {
             .kvStore(database) // Handler: execute DB operations
             .fraudCheck() // Handler: decide fraud logic
             .logger() // Handler: print all logs (including audit logs)
-            .raise() // Handler: catch errors
+            .attempt() // Handler: catch failures
             .runOrThrow()
 
     printResult(result1)
@@ -56,7 +56,7 @@ fun accountingExample() {
             .kvStore(database)
             .fraudCheck()
             .logger()
-            .raise()
+            .attempt()
             .runOrThrow()
 
     printResult(result2)
@@ -70,7 +70,7 @@ fun accountingExample() {
             .kvStore(database)
             .fraudCheck()
             .logger()
-            .raise()
+            .attempt()
             .runOrThrow()
 
     printResult(result3)
@@ -89,7 +89,7 @@ fun accountingExample() {
             .kvStoreAsync(asyncDatabase) // KVStore with IO effects
             .fraudCheck()
             .logger()
-            .raise()
+            .attempt()
             .ioBlocking()
 
     printResult(result4)
@@ -107,7 +107,7 @@ fun transferMoney(
         // 1. Security Check (External API)
         val isRisk = isFraudulent(amount, from).bind()
         if (isRisk) {
-            fail("Security Alert: Fraud detected for account $from").bind()
+            raise("Security Alert: Fraud detected for account $from").bind()
         }
 
         // 2. Read Source Balance (Database)
@@ -116,11 +116,11 @@ fun transferMoney(
         if (balance < amount) {
             // 3. Validation Logic
             logError("Insufficient funds in $from").bind()
-            fail("Insufficient funds").bind()
+            raise("Insufficient funds").bind()
         }
 
         // 4. Update Balances (two sequential writes — nothing rolls back the
-        // first if the program fails between them; see raise() in Error.kt)
+        // first if the program fails between them; see attempt() in Failure.kt)
         put(from, balance - amount).bind()
         val targetBal = get(to, 0.0).bind()
         put(to, targetBal + amount).bind()

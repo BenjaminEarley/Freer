@@ -5,14 +5,13 @@
 
 package com.benjaminearley.freer
 
+import com.benjaminearley.freer.effects.Generator
 import com.benjaminearley.freer.effects.NonDet
-import com.benjaminearley.freer.effects.Status
 import com.benjaminearley.freer.effects.ask
-import com.benjaminearley.freer.effects.catchError
+import com.benjaminearley.freer.effects.attempt
 import com.benjaminearley.freer.effects.choose
 import com.benjaminearley.freer.effects.collectAll
-import com.benjaminearley.freer.effects.coroutine
-import com.benjaminearley.freer.effects.fail
+import com.benjaminearley.freer.effects.generator
 import com.benjaminearley.freer.effects.getState
 import com.benjaminearley.freer.effects.guard
 import com.benjaminearley.freer.effects.ifte
@@ -25,6 +24,7 @@ import com.benjaminearley.freer.effects.orElse
 import com.benjaminearley.freer.effects.performIO
 import com.benjaminearley.freer.effects.putState
 import com.benjaminearley.freer.effects.raise
+import com.benjaminearley.freer.effects.recover
 import com.benjaminearley.freer.effects.runReader
 import com.benjaminearley.freer.effects.runState
 import com.benjaminearley.freer.effects.runStateWithFinal
@@ -47,7 +47,7 @@ class SemanticsTest {
     private val memThenFail =
         program {
             putState(2).bind()
-            fail("boom").bind()
+            raise("boom").bind()
         }
 
     private val statefulBranches =
@@ -514,39 +514,39 @@ class SemanticsTest {
     }
 
     @Test
-    fun catchErrorSubstitutesTheRecoveryProgram() {
+    fun recoverSubstitutesTheFallbackProgram() {
         val result =
-            program { fail("down").bind() }
-                .catchError { reason -> Program.Done("fallback:$reason") }
+            program { raise("down").bind() }
+                .recover { reason -> Program.Done("fallback:$reason") }
                 .runOrThrow()
         assertEquals("fallback:down", result)
     }
 
     @Test
-    fun failureInsideRecoveryPropagatesToTheOuterHandler() {
+    fun failureInsideFallbackPropagatesToTheOuterHandler() {
         val result =
-            program { fail("down").bind() }
-                .catchError { fail("worse") }
-                .raise()
+            program { raise("down").bind() }
+                .recover { raise("worse") }
+                .attempt()
                 .runOrThrow()
         assertEquals("worse", result.exceptionOrNull()?.message)
     }
 
     @Test
-    fun handlerOrderRaiseInsideStateKeepsStateWrittenBeforeTheFailure() {
-        val (result, state) = memThenFail.raise().runStateWithFinal(0).runOrThrow()
+    fun handlerOrderAttemptInsideStateKeepsStateWrittenBeforeTheFailure() {
+        val (result, state) = memThenFail.attempt().runStateWithFinal(0).runOrThrow()
         assertTrue(result.isFailure, "got $result")
         assertEquals(2, state)
     }
 
     @Test
-    fun handlerOrderStateInsideRaiseRollsTheStateBack() {
-        val result = memThenFail.runStateWithFinal(0).raise().runOrThrow()
+    fun handlerOrderStateInsideAttemptRollsTheStateBack() {
+        val result = memThenFail.runStateWithFinal(0).attempt().runOrThrow()
         assertTrue(result.isFailure, "got $result")
     }
 
     @Test
-    fun coroutineReifiesYieldsAsStatusAndResumesOnDemand() {
+    fun generatorReifiesYieldsAsDataAndResumesOnDemand() {
         val gen =
             program {
                 yieldValue(1).bind()
@@ -554,13 +554,13 @@ class SemanticsTest {
                 "end"
             }
         val seen = mutableListOf<Int>()
-        var status = gen.coroutine<Int, String>().runOrThrow()
-        while (status is Status.Yielded) {
+        var status = gen.generator<Int, String>().runOrThrow()
+        while (status is Generator.Yielded) {
             seen += status.value
             status = status.resume().runOrThrow()
         }
         assertEquals(listOf(1, 2), seen)
-        assertEquals("end", assertIs<Status.Finished<*>>(status).result)
+        assertEquals("end", assertIs<Generator.Finished<*>>(status).result)
     }
 
     @Test
@@ -589,9 +589,9 @@ class SemanticsTest {
         val appendThenFail =
             program {
                 modifyState<List<String>> { it + "draft" }.bind()
-                fail("rejected").bind()
+                raise("rejected").bind()
             }
-        val (_, rolledBack) = appendThenFail.transactional().raise().runStateWithFinal(listOf("a")).runOrThrow()
+        val (_, rolledBack) = appendThenFail.transactional().attempt().runStateWithFinal(listOf("a")).runOrThrow()
         assertEquals(listOf("a"), rolledBack)
 
         val append = modifyState<List<String>> { it + "b" }
@@ -617,7 +617,7 @@ class SemanticsTest {
     }
 
     @Test
-    fun coroutineYieldsValuesOfAnyType() {
+    fun generatorYieldsValuesOfAnyType() {
         val gen =
             program {
                 yieldValue("a").bind()
@@ -625,13 +625,13 @@ class SemanticsTest {
                 3
             }
         val seen = mutableListOf<String>()
-        var status = gen.coroutine<String, Int>().runOrThrow()
-        while (status is Status.Yielded) {
+        var status = gen.generator<String, Int>().runOrThrow()
+        while (status is Generator.Yielded) {
             seen += status.value
             status = status.resume().runOrThrow()
         }
         assertEquals(listOf("a", "b"), seen)
-        assertEquals(3, assertIs<Status.Finished<Int>>(status).result)
+        assertEquals(3, assertIs<Generator.Finished<Int>>(status).result)
     }
 
     @Test
@@ -651,20 +651,20 @@ class SemanticsTest {
     }
 
     @Test
-    fun catchErrorRecoveryEffectsNeedHandlersAppliedOutsideTheCatch() {
+    fun recoverFallbackEffectsNeedHandlersAppliedOutsideTheRecover() {
         val failing =
             program {
-                fail("down").bind()
+                raise("down").bind()
                 getState<Int>().bind()
             }
-        val recovery = { _: String -> program { putState(9).bind(); getState<Int>().bind() } }
+        val fallback = { _: String -> program { putState(9).bind(); getState<Int>().bind() } }
 
-        // A handler already applied beneath the catch never sees the recovery program
-        val beneath = failing.runState(0).catchError(recovery).run()
+        // A handler already applied beneath the recover never sees the fallback program
+        val beneath = failing.runState(0).recover(fallback).run()
         assertContains(beneath.exceptionOrNull()?.message.orEmpty(), "Unhandled effect")
 
-        // A handler applied outside the catch handles it
-        assertEquals(9, failing.catchError(recovery).runState(0).runOrThrow())
+        // A handler applied outside the recover handles it
+        assertEquals(9, failing.recover(fallback).runState(0).runOrThrow())
     }
 
     @Test
@@ -683,13 +683,13 @@ class SemanticsTest {
     fun multiShotOrderingCatchErrorInsideRecoversPerBranchOutsideReplacesAll() {
         val branches: Program<Int> =
             choose(listOf(1, 2, 3)).flatMap { x ->
-                if (x == 2) fail("branch 2 failed") else Program.Done(x)
+                if (x == 2) raise("branch 2 failed") else Program.Done(x)
             }
 
-        val perBranch = branches.catchError { Program.Done(-1) }.collectAll().runOrThrow()
+        val perBranch = branches.recover { Program.Done(-1) }.collectAll().runOrThrow()
         assertEquals(listOf(1, -1, 3), perBranch)
 
-        val wholeCollection = branches.collectAll().catchError { Program.Done(listOf(-1)) }.runOrThrow()
+        val wholeCollection = branches.collectAll().recover { Program.Done(listOf(-1)) }.runOrThrow()
         assertEquals(listOf(-1), wholeCollection)
     }
 
@@ -698,18 +698,18 @@ class SemanticsTest {
         val depositThenFail =
             program {
                 putState(getState<Int>().bind() + 100).bind()
-                fail("validation").bind()
+                raise("validation").bind()
                 "unreachable"
             }
 
-        val (_, leaked) = depositThenFail.raise().runStateWithFinal(500).runOrThrow()
+        val (_, leaked) = depositThenFail.attempt().runStateWithFinal(500).runOrThrow()
         assertEquals(600, leaked, "unprotected")
 
-        val (_, rolledBack) = depositThenFail.transactional().raise().runStateWithFinal(500).runOrThrow()
+        val (_, rolledBack) = depositThenFail.transactional().attempt().runStateWithFinal(500).runOrThrow()
         assertEquals(500, rolledBack, "transactional")
 
         val deposit = program { putState(getState<Int>().bind() + 100).bind(); "ok" }
-        val (ok, committed) = deposit.transactional().raise().runStateWithFinal(500).runOrThrow()
+        val (ok, committed) = deposit.transactional().attempt().runStateWithFinal(500).runOrThrow()
         assertEquals("ok", ok.getOrNull())
         assertEquals(600, committed)
     }

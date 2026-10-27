@@ -1,8 +1,8 @@
 /*
  * Generators: reifying the continuation as data.
  *
- * The coroutine() handler turns a program that performs Yield effects into a
- * Status value: either Finished with the result, or Yielded holding the value and
+ * The generator() handler turns a program that performs Yield effects into a
+ * Generator value: either Finished with the result, or Yielded holding the value and
  * the rest of the program as a callable continuation. The driver decides when
  * (and whether) to resume — the suspended program is just data in between.
  */
@@ -15,7 +15,7 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
-/** Generator output: handled by [coroutine]. */
+/** Generator output: handled by [generator]. */
 public sealed interface Emit<out R> : Effect<R> {
     /** Hand [value] to the driver and pause until it resumes the generator. */
     public data class Yield<out T>(
@@ -23,15 +23,15 @@ public sealed interface Emit<out R> : Effect<R> {
     ) : Emit<Unit>
 }
 
-/** Yield [value] to the driver of the enclosing [coroutine] and pause until resumed. */
+/** Yield [value] to the driver of the enclosing [generator] and pause until resumed. */
 public fun <T> yieldValue(value: T): Program<Unit> = perform(Emit.Yield(value))
 
-/** One step of a generator run by [coroutine]: either [Finished] or [Yielded]. */
-public sealed class Status<out T, out A> {
+/** One step of a generator run by [generator]: either [Finished] or [Yielded]. */
+public sealed class Generator<out T, out A> {
     /** The generator returned [result]; there is nothing left to resume. */
     public data class Finished<out A>(
         public val result: A,
-    ) : Status<Nothing, A>()
+    ) : Generator<Nothing, A>()
 
     /**
      * The generator yielded [value]. [resume] returns the program for the next step;
@@ -39,23 +39,23 @@ public sealed class Status<out T, out A> {
      */
     public class Yielded<out T, out A>(
         public val value: T,
-        public val resume: () -> Program<Status<T, A>>,
-    ) : Status<T, A>()
+        public val resume: () -> Program<Generator<T, A>>,
+    ) : Generator<T, A>()
 }
 
 /**
- * Run this program as a generator: every [Emit.Yield] pauses it as a [Status.Yielded]
- * holding the rest of the program, and completion gives [Status.Finished]. The
- * yielded type is erased, so one coroutine() should see one yielded type [T].
+ * Run this program as a generator: every [Emit.Yield] pauses it as a [Generator.Yielded]
+ * holding the rest of the program, and completion gives [Generator.Finished]. The
+ * yielded type is erased, so one generator() should see one yielded type [T].
  */
-public fun <T, A> Program<A>.coroutine(): Program<Status<T, A>> =
-    interpret<Emit<*>, A, Status<T, A>>(
-        transformDone = { a -> Program.Done(Status.Finished(a)) },
+public fun <T, A> Program<A>.generator(): Program<Generator<T, A>> =
+    interpret<Emit<*>, A, Generator<T, A>>(
+        transformDone = { a -> Program.Done(Generator.Finished(a)) },
         rule = { op, resume ->
             // The continuation is captured and invoked after the rule has returned — a
             // deferred resume, so it produces a real Program each time it's called.
             when (op) {
-                is Emit.Yield<*> -> Program.Done(Status.Yielded(op.value as T) { resume(Unit) })
+                is Emit.Yield<*> -> Program.Done(Generator.Yielded(op.value as T) { resume(Unit) })
             }
         },
     )

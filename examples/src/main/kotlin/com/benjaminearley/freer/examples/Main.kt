@@ -8,7 +8,7 @@ fun main() {
     println("\n--- Scenario 5: Left-Associated Bind Performance ---")
     bindChainComparison()
 
-    println("\n--- Scenario 6: Error Recovery (catchError) ---")
+    println("\n--- Scenario 6: Error Recovery (recover) ---")
     errorRecoveryExample()
 
     println("\n--- Scenario 7: Handler Ordering Decides Semantics ---")

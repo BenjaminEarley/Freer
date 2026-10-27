@@ -1,8 +1,8 @@
 package com.benjaminearley.freer.examples
 
 import com.benjaminearley.freer.Program
-import com.benjaminearley.freer.effects.Status
-import com.benjaminearley.freer.effects.coroutine
+import com.benjaminearley.freer.effects.Generator
+import com.benjaminearley.freer.effects.generator
 import com.benjaminearley.freer.effects.yieldValue
 import com.benjaminearley.freer.program
 import com.benjaminearley.freer.runOrThrow
@@ -18,10 +18,10 @@ fun generatorExample() {
             "yielded a total of $total"
         }
 
-    var status = counter.coroutine<Int, String>().runOrThrow()
-    while (status is Status.Yielded) {
+    var status = counter.generator<Int, String>().runOrThrow()
+    while (status is Generator.Yielded) {
         println("driver received ${status.value}")
         status = status.resume().runOrThrow()
     }
-    println((status as Status.Finished).result)
+    println((status as Generator.Finished).result)
 }
