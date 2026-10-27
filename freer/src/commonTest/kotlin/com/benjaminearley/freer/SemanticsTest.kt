@@ -37,6 +37,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SemanticsTest {
@@ -346,8 +347,7 @@ class SemanticsTest {
     }
 
     @Test
-    fun handleSThreadsStateThroughTheDsl() {
-        // runState is built on handleS
+    fun runStateThreadsStateThroughTheDsl() {
         val prog =
             program {
                 putState(1).bind()
@@ -359,6 +359,85 @@ class SemanticsTest {
 
         val initialOnly = program { getState<Int>().bind() }.runState(42).runOrThrow()
         assertEquals(42, initialOnly, "Expected the initial state")
+    }
+
+    @Test
+    fun handleSThreadsStateThroughSeveralEffects() {
+        val log = mutableListOf<String>()
+        val prog =
+            program {
+                val a = perform(AskInt).bind()
+                val b = perform(AskInt).bind()
+                val c = perform(AskInt).bind()
+                a + b * 10 + c * 100
+            }
+        val result =
+            prog
+                .handleS<Ask<*>, Int, Int>(1) { s, _ ->
+                    // A rule that suspends exercises the built-program path too
+                    perform(Say("s=$s")).bind()
+                    (s + 1) to s
+                }.handle<Out<*>, Int> { op ->
+                    when (op) {
+                        is Say -> log += op.s
+                    }
+                }.runOrThrow()
+        assertEquals(1 + 20 + 300, result)
+        assertEquals(listOf("s=1", "s=2", "s=3"), log)
+    }
+
+    @Test
+    fun handleSInsideCollectAllBacktracksItsStatePerBranch() {
+        val branches =
+            choose(listOf(1, 2, 3)).flatMap { n ->
+                perform(AskInt).flatMap { a -> perform(AskInt).map { b -> Triple(n, a, b) } }
+            }
+        val results =
+            branches
+                .handleS<Ask<*>, Int, Triple<Int, Int, Int>>(0) { s, _ -> (s + 1) to s }
+                .collectAll()
+                .runOrThrow()
+        assertEquals(listOf(Triple(1, 0, 1), Triple(2, 0, 1), Triple(3, 0, 1)), results)
+    }
+
+    @Test
+    fun programValuedStateRoundTripsThroughEveryStateHandler() {
+        val initial: Program<Int> = Program.Done(1)
+        val replacement: Program<Int> = Program.Done(2)
+        val read = program { getState<Program<Int>>().bind() }
+        val writeThenRead =
+            program {
+                putState(replacement).bind()
+                getState<Program<Int>>().bind()
+            }
+
+        assertSame(initial, read.runState(initial).runOrThrow())
+        assertSame(replacement, writeThenRead.runState(initial).runOrThrow())
+
+        val (seen, final) = writeThenRead.runStateWithFinal(initial).runOrThrow()
+        assertSame(replacement, seen)
+        assertSame(replacement, final)
+
+        val (inner, committed) = writeThenRead.transactional().runStateWithFinal(initial).runOrThrow()
+        assertSame(replacement, inner)
+        assertSame(replacement, committed)
+    }
+
+    @Test
+    fun programValuedEnvironmentReachesRunReaderAndLocal() {
+        val env: Program<Int> = Program.Done(1)
+        val overridden: Program<Int> = Program.Done(2)
+        val read = ask<Program<Int>>()
+
+        assertSame(env, read.runReader(env).runOrThrow())
+
+        val (inner, outer) =
+            program {
+                val inner = read.local { _: Program<Int> -> overridden }.bind()
+                inner to read.bind()
+            }.runReader(env).runOrThrow()
+        assertSame(overridden, inner)
+        assertSame(env, outer)
     }
 
     @Test

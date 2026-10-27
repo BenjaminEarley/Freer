@@ -5,7 +5,6 @@ package com.benjaminearley.freer.effects
 import com.benjaminearley.freer.Effect
 import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.flatMap
-import com.benjaminearley.freer.handleS
 import com.benjaminearley.freer.interpretS
 import com.benjaminearley.freer.map
 import com.benjaminearley.freer.perform
@@ -20,10 +19,10 @@ import com.benjaminearley.freer.perform
  * with a different type never sees them.
  */
 public fun <S, A> Program<A>.runState(initial: S): Program<A> =
-    handleS<State<*>, Any?, A>(initial) { s, op ->
+    interpretS<State<*>, Any?, A>(initial) { s, op, resume ->
         when (op) {
-            is State.Get -> s to s // state unchanged, return the state
-            is State.Put -> op.value to Unit // new state, return Unit
+            is State.Get -> resume(s, s) // state unchanged, return the state
+            is State.Put -> resume(op.value, Unit) // new state, return Unit
         }
     }
 
