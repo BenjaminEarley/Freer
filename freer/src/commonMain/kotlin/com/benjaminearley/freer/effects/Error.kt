@@ -11,13 +11,13 @@ public fun <A> Program<A>.raise(): Program<Result<A>> =
         rule = { op, _ ->
             when (op) {
                 // Short-circuit: We ignore the 'resume' function
-                is Raise -> Program.Done(Result.failure(Exception(op.reason)))
+                is Error.Raise -> Program.Done(Result.failure(Exception(op.reason)))
             }
         },
     )
 
 /**
- * Recover from a failure: on [Raise], the rest of the failed program is abandoned
+ * Recover from a failure: on [Error.Raise], the rest of the failed program is abandoned
  * (there is nothing to resume into) and [recover] replaces it. A failure raised
  * *inside* [recover] is not caught here — it propagates to the next outer
  * [catchError] or [raise].
@@ -29,14 +29,14 @@ public fun <A> Program<A>.raise(): Program<Result<A>> =
 public fun <A> Program<A>.catchError(recover: (String) -> Program<A>): Program<A> =
     interpret<Error<*>, A> { op, _ ->
         when (op) {
-            is Raise -> recover(op.reason)
+            is Error.Raise -> recover(op.reason)
         }
     }
 
-public sealed interface Error<out R> : Effect<R>
+public sealed interface Error<out R> : Effect<R> {
+    public data class Raise(
+        public val reason: String,
+    ) : Error<Nothing>
+}
 
-public data class Raise(
-    val reason: String,
-) : Error<Nothing>
-
-public fun fail(reason: String): Program<Nothing> = perform(Raise(reason))
+public fun fail(reason: String): Program<Nothing> = perform(Error.Raise(reason))

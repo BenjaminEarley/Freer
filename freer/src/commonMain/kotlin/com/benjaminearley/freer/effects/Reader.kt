@@ -8,6 +8,8 @@
  * flatMap and a rule that never suspends, so local() also works under a
  * multi-shot handler such as collectAll.
  */
+@file:Suppress("UNCHECKED_CAST")
+
 package com.benjaminearley.freer.effects
 
 import com.benjaminearley.freer.Effect
@@ -17,26 +19,35 @@ import com.benjaminearley.freer.handle
 import com.benjaminearley.freer.intercept
 import com.benjaminearley.freer.perform
 
-public sealed interface Reader<out R> : Effect<R>
+public sealed interface Reader<out R> : Effect<R> {
+    /** Read the environment. */
+    public data object Ask : Reader<Any?>
+}
 
-public data object AskEnv : Reader<String>
+/**
+ * Read the environment. The environment type is erased, so this is unchecked:
+ * [E] must be the type the nearest [runReader] (or [local]) supplies.
+ */
+public fun <E> ask(): Program<E> = perform(Reader.Ask) as Program<E>
 
-public fun ask(): Program<String> = perform(AskEnv)
-
-public fun <A> Program<A>.runReader(env: String): Program<A> =
+/**
+ * Answer every [Reader.Ask] with [env]. A handler stack carries one environment
+ * type: this handler consumes every Ask above it, whatever type it was meant for.
+ */
+public fun <E, A> Program<A>.runReader(env: E): Program<A> =
     handle<Reader<*>, A> { op ->
         when (op) {
-            is AskEnv -> env
+            is Reader.Ask -> env
         }
     }
 
 /** Run this sub-program with the environment transformed; the override ends with it. */
-public fun <A> Program<A>.local(transform: (String) -> String): Program<A> =
-    ask().flatMap { e ->
+public fun <E, A> Program<A>.local(transform: (E) -> E): Program<A> =
+    ask<E>().flatMap { e ->
         val env = transform(e)
         this@local.intercept<Reader<*>, A> { op, _ ->
             when (op) {
-                is AskEnv -> env
+                is Reader.Ask -> env
             }
         }
     }

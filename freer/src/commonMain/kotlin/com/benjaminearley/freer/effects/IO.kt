@@ -11,13 +11,13 @@ import com.benjaminearley.freer.trampolineMisuse
 
 // Handlers that need real async I/O emit IO effects via performIO { }.
 // A single suspend io() at the edge handles them all.
-public sealed interface IO<out R> : Effect<R>
+public sealed interface IO<out R> : Effect<R> {
+    public data class Suspend<R>(
+        public val thunk: suspend () -> R,
+    ) : IO<R>
+}
 
-public data class SuspendIO<R>(
-    val thunk: suspend () -> R,
-) : IO<R>
-
-public fun <R> performIO(block: suspend () -> R): Program<R> = perform(SuspendIO(block))
+public fun <R> performIO(block: suspend () -> R): Program<R> = perform(IO.Suspend(block))
 
 // Terminal suspend runner. Apply AFTER all other effect handlers have stripped
 // their effects: runs every IO thunk and returns the program's final value.
@@ -41,8 +41,8 @@ public suspend fun <A> Program<A>.io(): A {
             is Program.Suspended<*, *> -> {
                 val suspended = c as Program.Suspended<Any?, A>
                 val effect = suspended.effect
-                if (effect is SuspendIO<*>) {
-                    val result = (effect as SuspendIO<Any?>).thunk()
+                if (effect is IO.Suspend<*>) {
+                    val result = (effect as IO.Suspend<Any?>).thunk()
                     current = resume(suspended.pipeline, result)
                 } else {
                     error(

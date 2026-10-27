@@ -34,8 +34,8 @@ public fun <A> Program<A>.ioBlocking(): A {
             is Program.Suspended<*, *> -> {
                 val suspended = c as Program.Suspended<Any?, A>
                 val effect = suspended.effect
-                if (effect is SuspendIO<*>) {
-                    val thunk = (effect as SuspendIO<Any?>).thunk
+                if (effect is IO.Suspend<*>) {
+                    val thunk = (effect as IO.Suspend<Any?>).thunk
                     // Fresh box per thunk: a buggy thunk that resumes its continuation
                     // twice lands the second result in an orphaned box instead of
                     // poisoning the next thunk's handoff.

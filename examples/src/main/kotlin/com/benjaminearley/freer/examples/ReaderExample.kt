@@ -8,13 +8,13 @@ import com.benjaminearley.freer.program
 import com.benjaminearley.freer.runOrThrow
 
 fun readerExample() {
-    val greet: Program<String> = program { "Hello, ${ask().bind()}!" }
+    val greet: Program<String> = program { "Hello, ${ask<String>().bind()}!" }
 
     println("plain           = ${greet.runReader("world").runOrThrow()}")
 
     val combined =
         program {
-            val inner = greet.local { it.uppercase() }.bind()
+            val inner = greet.local { env: String -> env.uppercase() }.bind()
             val outer = greet.bind()
             "$inner / $outer"
         }.runReader("world").runOrThrow()

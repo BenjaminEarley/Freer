@@ -32,13 +32,13 @@ import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
 
-public sealed interface NonDet<out R> : Effect<R>
+public sealed interface NonDet<out R> : Effect<R> {
+    public data class Choose(
+        public val options: List<Any?>,
+    ) : NonDet<Any?>
+}
 
-public data class Choose(
-    val options: List<Any?>,
-) : NonDet<Any?>
-
-public fun <T> choose(options: List<T>): Program<T> = perform(Choose(options)) as Program<T>
+public fun <T> choose(options: List<T>): Program<T> = perform(NonDet.Choose(options)) as Program<T>
 
 /** Prune this branch unless [condition] holds. */
 public fun guard(condition: Boolean): Program<Unit> = if (condition) Program.DONE_UNIT else choose(emptyList())
@@ -49,7 +49,7 @@ public fun <A> Program<A>.collectAll(): Program<List<A>> =
         transformDone = { a -> Program.Done(listOf(a)) },
         rule = { op, resume ->
             when (op) {
-                is Choose ->
+                is NonDet.Choose ->
                     // The program{} block defers the resume calls out of the rule body
                     // (a direct resume is single-shot); by the time the block runs, each
                     // resume(option) replays the same captured continuation — multi-shot.
@@ -86,7 +86,7 @@ public fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
         transformDone = { a -> Program.Done(a to choose(emptyList<A>())) },
         rule = { op, resume ->
             when (op) {
-                is Choose ->
+                is NonDet.Choose ->
                     program {
                         var found: Pair<A, Program<A>>? = null
                         var next = 0

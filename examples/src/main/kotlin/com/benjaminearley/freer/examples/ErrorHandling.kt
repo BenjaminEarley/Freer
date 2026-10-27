@@ -14,10 +14,10 @@ package com.benjaminearley.freer.examples
 import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.effects.catchError
 import com.benjaminearley.freer.effects.fail
-import com.benjaminearley.freer.effects.memorize
-import com.benjaminearley.freer.effects.memoryWithState
+import com.benjaminearley.freer.effects.getState
+import com.benjaminearley.freer.effects.putState
 import com.benjaminearley.freer.effects.raise
-import com.benjaminearley.freer.effects.recall
+import com.benjaminearley.freer.effects.runStateWithFinal
 import com.benjaminearley.freer.effects.transactional
 import com.benjaminearley.freer.program
 import com.benjaminearley.freer.runOrThrow
@@ -47,10 +47,10 @@ fun errorRecoveryExample() {
 fun handlerOrderingExample() {
     val prog: Program<Int> =
         program {
-            memorize(1).bind()
-            memorize(recall().bind() + 1).bind() // state = 2
+            putState(1).bind()
+            putState(getState<Int>().bind() + 1).bind() // state = 2
             fail("boom").bind()
-            recall().bind() // never reached
+            getState<Int>().bind() // never reached
         }
 
     // Errors handled inside, state outside: the failure is local — state
@@ -58,7 +58,7 @@ fun handlerOrderingExample() {
     val stateSurvives: Pair<Result<Int>, Int> =
         prog
             .raise()
-            .memoryWithState(0)
+            .runStateWithFinal(0)
             .runOrThrow()
     println("raise inside memory  = $stateSurvives")
 
@@ -66,7 +66,7 @@ fun handlerOrderingExample() {
     // whole (value, state) result is rolled back.
     val stateRolledBack: Result<Pair<Int, Int>> =
         prog
-            .memoryWithState(0)
+            .runStateWithFinal(0)
             .raise()
             .runOrThrow()
     println("memory inside raise  = $stateRolledBack")
@@ -75,21 +75,21 @@ fun handlerOrderingExample() {
 fun transactionalExample() {
     val depositThenFail: Program<String> =
         program {
-            memorize(recall().bind() + 100).bind()
+            putState(getState<Int>().bind() + 100).bind()
             fail("validation failed").bind()
             "unreachable"
         }
 
     // Unprotected (state outside errors): the partial write survives the failure
-    val leaked = depositThenFail.raise().memoryWithState(500).runOrThrow()
+    val leaked = depositThenFail.raise().runStateWithFinal(500).runOrThrow()
     println("unprotected    = $leaked")
 
     // Transactional: writes hit a local copy; the commit never runs on failure
-    val rolledBack = depositThenFail.transactional().raise().memoryWithState(500).runOrThrow()
+    val rolledBack = depositThenFail.transactional().raise().runStateWithFinal(500).runOrThrow()
     println("transactional  = $rolledBack")
 
     // On success, the transaction commits its final state downstream
-    val deposit = program { memorize(recall().bind() + 100).bind(); "deposited" }
-    val committed = deposit.transactional().raise().memoryWithState(500).runOrThrow()
+    val deposit = program { putState(getState<Int>().bind() + 100).bind(); "deposited" }
+    val committed = deposit.transactional().raise().runStateWithFinal(500).runOrThrow()
     println("committed      = $committed")
 }

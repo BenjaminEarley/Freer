@@ -18,7 +18,7 @@ fun generatorExample() {
             "yielded a total of $total"
         }
 
-    var status = counter.coroutine().runOrThrow()
+    var status = counter.coroutine<Int, String>().runOrThrow()
     while (status is Status.Yielded) {
         println("driver received ${status.value}")
         status = status.resume().runOrThrow()

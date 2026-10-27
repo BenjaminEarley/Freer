@@ -13,20 +13,21 @@ import com.benjaminearley.freer.effects.choose
 import com.benjaminearley.freer.effects.collectAll
 import com.benjaminearley.freer.effects.coroutine
 import com.benjaminearley.freer.effects.fail
+import com.benjaminearley.freer.effects.getState
 import com.benjaminearley.freer.effects.guard
 import com.benjaminearley.freer.effects.ifte
 import com.benjaminearley.freer.effects.io
 import com.benjaminearley.freer.effects.local
-import com.benjaminearley.freer.effects.memorize
-import com.benjaminearley.freer.effects.memory
-import com.benjaminearley.freer.effects.memoryWithState
+import com.benjaminearley.freer.effects.modifyState
 import com.benjaminearley.freer.effects.msplit
 import com.benjaminearley.freer.effects.once
 import com.benjaminearley.freer.effects.orElse
 import com.benjaminearley.freer.effects.performIO
+import com.benjaminearley.freer.effects.putState
 import com.benjaminearley.freer.effects.raise
-import com.benjaminearley.freer.effects.recall
 import com.benjaminearley.freer.effects.runReader
+import com.benjaminearley.freer.effects.runState
+import com.benjaminearley.freer.effects.runStateWithFinal
 import com.benjaminearley.freer.effects.transactional
 import com.benjaminearley.freer.effects.yieldValue
 import kotlin.test.Test
@@ -43,15 +44,15 @@ class SemanticsTest {
 
     private val memThenFail =
         program {
-            memorize(2).bind()
+            putState(2).bind()
             fail("boom").bind()
         }
 
     private val statefulBranches =
         choose(listOf(10, 20, 30)).flatMap { x ->
-            recall().flatMap { before ->
-                memorize(before + x).flatMap {
-                    recall().map { after -> Triple(x, before, after) }
+            getState<Int>().flatMap { before ->
+                putState(before + x).flatMap {
+                    getState<Int>().map { after -> Triple(x, before, after) }
                 }
             }
         }
@@ -346,17 +347,17 @@ class SemanticsTest {
 
     @Test
     fun handleSThreadsStateThroughTheDsl() {
-        // memory is built on handleS
+        // runState is built on handleS
         val prog =
             program {
-                memorize(1).bind()
-                val a = recall().bind()
-                memorize(a + 10).bind()
-                recall().bind()
+                putState(1).bind()
+                val a = getState<Int>().bind()
+                putState(a + 10).bind()
+                getState<Int>().bind()
             }
-        assertEquals(11, prog.memory(0).runOrThrow())
+        assertEquals(11, prog.runState(0).runOrThrow())
 
-        val initialOnly = program { recall().bind() }.memory(42).runOrThrow()
+        val initialOnly = program { getState<Int>().bind() }.runState(42).runOrThrow()
         assertEquals(42, initialOnly, "Expected the initial state")
     }
 
@@ -452,15 +453,15 @@ class SemanticsTest {
     }
 
     @Test
-    fun handlerOrderRaiseInsideMemoryKeepsStateWrittenBeforeTheFailure() {
-        val (result, state) = memThenFail.raise().memoryWithState(0).runOrThrow()
+    fun handlerOrderRaiseInsideStateKeepsStateWrittenBeforeTheFailure() {
+        val (result, state) = memThenFail.raise().runStateWithFinal(0).runOrThrow()
         assertTrue(result.isFailure, "got $result")
         assertEquals(2, state)
     }
 
     @Test
-    fun handlerOrderMemoryInsideRaiseRollsTheStateBack() {
-        val result = memThenFail.memoryWithState(0).raise().runOrThrow()
+    fun handlerOrderStateInsideRaiseRollsTheStateBack() {
+        val result = memThenFail.runStateWithFinal(0).raise().runOrThrow()
         assertTrue(result.isFailure, "got $result")
     }
 
@@ -473,13 +474,84 @@ class SemanticsTest {
                 "end"
             }
         val seen = mutableListOf<Int>()
-        var status = gen.coroutine().runOrThrow()
+        var status = gen.coroutine<Int, String>().runOrThrow()
         while (status is Status.Yielded) {
             seen += status.value
             status = status.resume().runOrThrow()
         }
         assertEquals(listOf(1, 2), seen)
         assertEquals("end", assertIs<Status.Finished<*>>(status).result)
+    }
+
+    @Test
+    fun runStateCarriesAnyStateTypeAndModifyStateRewritesIt() {
+        data class Account(
+            val owner: String,
+            val balance: Int,
+        )
+
+        val prog =
+            program {
+                modifyState<Account> { it.copy(balance = it.balance + 50) }.bind()
+                val seen = getState<Account>().bind()
+                putState(seen.copy(owner = seen.owner.uppercase())).bind()
+                modifyState<Account> { it.copy(balance = it.balance * 2) }.bind()
+                seen.balance
+            }
+        val (seen, final) = prog.runStateWithFinal(Account("ann", 100)).runOrThrow()
+        assertEquals(150, seen)
+        assertEquals(Account("ANN", 300), final)
+        assertEquals(150, prog.runState(Account("ann", 100)).runOrThrow())
+    }
+
+    @Test
+    fun transactionalCommitsAndRollsBackANonIntState() {
+        val appendThenFail =
+            program {
+                modifyState<List<String>> { it + "draft" }.bind()
+                fail("rejected").bind()
+            }
+        val (_, rolledBack) = appendThenFail.transactional().raise().runStateWithFinal(listOf("a")).runOrThrow()
+        assertEquals(listOf("a"), rolledBack)
+
+        val append = modifyState<List<String>> { it + "b" }
+        val (_, committed) = append.transactional().runStateWithFinal(listOf("a")).runOrThrow()
+        assertEquals(listOf("a", "b"), committed)
+    }
+
+    @Test
+    fun runReaderCarriesAnyEnvironmentTypeAndLocalTransformsIt() {
+        data class Config(
+            val host: String,
+            val port: Int,
+        )
+
+        val address = ask<Config>().map { "${it.host}:${it.port}" }
+        val combined =
+            program {
+                val inner = address.local { c: Config -> c.copy(port = c.port + 1) }.bind()
+                val outer = address.bind()
+                inner to outer
+            }.runReader(Config("localhost", 8080)).runOrThrow()
+        assertEquals("localhost:8081" to "localhost:8080", combined)
+    }
+
+    @Test
+    fun coroutineYieldsValuesOfAnyType() {
+        val gen =
+            program {
+                yieldValue("a").bind()
+                yieldValue("b").bind()
+                3
+            }
+        val seen = mutableListOf<String>()
+        var status = gen.coroutine<String, Int>().runOrThrow()
+        while (status is Status.Yielded) {
+            seen += status.value
+            status = status.resume().runOrThrow()
+        }
+        assertEquals(listOf("a", "b"), seen)
+        assertEquals(3, assertIs<Status.Finished<Int>>(status).result)
     }
 
     @Test
@@ -503,27 +575,27 @@ class SemanticsTest {
         val failing =
             program {
                 fail("down").bind()
-                recall().bind()
+                getState<Int>().bind()
             }
-        val recovery = { _: String -> program { memorize(9).bind(); recall().bind() } }
+        val recovery = { _: String -> program { putState(9).bind(); getState<Int>().bind() } }
 
         // A handler already applied beneath the catch never sees the recovery program
-        val beneath = failing.memory(0).catchError(recovery).run()
+        val beneath = failing.runState(0).catchError(recovery).run()
         assertContains(beneath.exceptionOrNull()?.message.orEmpty(), "Unhandled effect")
 
         // A handler applied outside the catch handles it
-        assertEquals(9, failing.catchError(recovery).memory(0).runOrThrow())
+        assertEquals(9, failing.catchError(recovery).runState(0).runOrThrow())
     }
 
     @Test
     fun multiShotOrderingStateInsideCollectAllBacktracksPerBranch() {
-        val results = statefulBranches.memory(0).collectAll().runOrThrow()
+        val results = statefulBranches.runState(0).collectAll().runOrThrow()
         assertEquals(listOf(Triple(10, 0, 10), Triple(20, 0, 20), Triple(30, 0, 30)), results)
     }
 
     @Test
     fun multiShotOrderingStateOutsideCollectAllThreadsGloballyAcrossBranches() {
-        val results = statefulBranches.collectAll().memory(0).runOrThrow()
+        val results = statefulBranches.collectAll().runState(0).runOrThrow()
         assertEquals(listOf(Triple(10, 0, 10), Triple(20, 10, 30), Triple(30, 30, 60)), results)
     }
 
@@ -545,29 +617,29 @@ class SemanticsTest {
     fun transactionalRollsBackPartialWritesOnFailureAndCommitsOnSuccess() {
         val depositThenFail =
             program {
-                memorize(recall().bind() + 100).bind()
+                putState(getState<Int>().bind() + 100).bind()
                 fail("validation").bind()
                 "unreachable"
             }
 
-        val (_, leaked) = depositThenFail.raise().memoryWithState(500).runOrThrow()
+        val (_, leaked) = depositThenFail.raise().runStateWithFinal(500).runOrThrow()
         assertEquals(600, leaked, "unprotected")
 
-        val (_, rolledBack) = depositThenFail.transactional().raise().memoryWithState(500).runOrThrow()
+        val (_, rolledBack) = depositThenFail.transactional().raise().runStateWithFinal(500).runOrThrow()
         assertEquals(500, rolledBack, "transactional")
 
-        val deposit = program { memorize(recall().bind() + 100).bind(); "ok" }
-        val (ok, committed) = deposit.transactional().raise().memoryWithState(500).runOrThrow()
+        val deposit = program { putState(getState<Int>().bind() + 100).bind(); "ok" }
+        val (ok, committed) = deposit.transactional().raise().runStateWithFinal(500).runOrThrow()
         assertEquals("ok", ok.getOrNull())
         assertEquals(600, committed)
     }
 
     @Test
     fun readerLocalOverridesTheEnvironmentOnlyInsideTheSubProgram() {
-        val greet = program { ask().bind() }
+        val greet = program { ask<String>().bind() }
         val combined =
             program {
-                val inner = greet.local { it.uppercase() }.bind()
+                val inner = greet.local { e: String -> e.uppercase() }.bind()
                 val outer = greet.bind()
                 inner to outer
             }.runReader("env").runOrThrow()
@@ -617,12 +689,12 @@ class SemanticsTest {
     fun localIsMultiShotSafe() {
         // Every branch sees the override, the outside does not
         val result =
-            ask()
+            ask<String>()
                 .flatMap { before ->
                     choose(listOf(1, 2))
-                        .flatMap { n -> ask().map { env -> "$env$n" } }
-                        .local { it.uppercase() }
-                        .flatMap { inner -> ask().map { after -> "$before|$inner|$after" } }
+                        .flatMap { n -> ask<String>().map { env -> "$env$n" } }
+                        .local { e: String -> e.uppercase() }
+                        .flatMap { inner -> ask<String>().map { after -> "$before|$inner|$after" } }
                 }.runReader("e")
                 .collectAll()
                 .runOrThrow()
@@ -634,10 +706,10 @@ class SemanticsTest {
         // Each branch commits its own final state
         val result =
             choose(listOf(1, 2))
-                .flatMap { n -> memorize(n * 10) }
+                .flatMap { n -> putState(n * 10) }
                 .transactional()
-                .flatMap { recall() }
-                .memory(0)
+                .flatMap { getState<Int>() }
+                .runState(0)
                 .collectAll()
                 .runOrThrow()
         assertEquals(listOf(10, 20), result)
