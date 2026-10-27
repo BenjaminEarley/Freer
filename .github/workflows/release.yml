@@ -1,0 +1,70 @@
+# Publishes com.benjaminearley:freer to Maven Central when a version tag (v1.2.3) is pushed.
+# The tag is the release version; gradle.properties keeps the -SNAPSHOT version for main.
+#
+# Required repository secrets:
+#   MAVEN_CENTRAL_USERNAME  Central Portal user token name
+#   MAVEN_CENTRAL_PASSWORD  Central Portal user token password
+#   SIGNING_KEY             ASCII-armored PGP private key
+#   SIGNING_PASSWORD        passphrase of that key
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    # Apple targets can only be built and published from macOS.
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Derive the version from the tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ || "$version" == *SNAPSHOT ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a release version"
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      # Local builds skip signing when no key is configured; a release must never do that.
+      - name: Require credentials
+        run: |
+          for name in ORG_GRADLE_PROJECT_mavenCentralUsername ORG_GRADLE_PROJECT_mavenCentralPassword \
+                      ORG_GRADLE_PROJECT_signingInMemoryKey ORG_GRADLE_PROJECT_signingInMemoryKeyPassword; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; check the repository secrets"
+              exit 1
+            fi
+          done
+
+      # The configuration cache is off so the credentials are never serialized into it.
+      - name: Check
+        timeout-minutes: 75
+        run: ./gradlew check -Pversion="$RELEASE_VERSION" --no-configuration-cache
+
+      - name: Publish and release
+        timeout-minutes: 60
+        run: ./gradlew publishAndReleaseToMavenCentral -Pversion="$RELEASE_VERSION" --no-configuration-cache
