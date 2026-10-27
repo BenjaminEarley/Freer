@@ -12,8 +12,9 @@ on:
   push:
     tags: ['v*']
 
+# contents: write lets the job create the GitHub release for the tag.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -79,3 +80,16 @@ jobs:
       - name: Publish and release
         timeout-minutes: 60
         run: ./gradlew publishAndReleaseToMavenCentral -Pversion="$RELEASE_VERSION" --no-configuration-cache
+
+      # Runs only after the Maven Central release succeeded. The body starts with the
+      # coordinates; GitHub appends notes generated from the commits since the previous tag.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          if [[ "$RELEASE_VERSION" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$RELEASE_VERSION" \
+            --notes "Published to Maven Central as \`com.benjaminearley:freer:$RELEASE_VERSION\`." \
+            --generate-notes $prerelease
