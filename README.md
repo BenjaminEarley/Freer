@@ -160,7 +160,7 @@ fun <A> Program<A>.uppercaseConsole(): Program<A> =
 
 A middleware can also perform *new* effects — the demo's `auditKVStore` emits `Log` effects. Handler order matters then: the handler for the emitted effects must sit downstream of the intercept. `prog.auditKVStore().kvStore(db).logger()` works; applying `logger()` before `auditKVStore()` leaves the audit logs unhandled.
 
-Middleware has a real per-effect cost: `proceed()` re-emits the effect for a full downstream dispatch round trip, measuring several times a plain handler — keep `intercept` off hot-path effects. A stateful `handleS` allocates roughly twice as much per effect as a plain `handle` (the state pair and boxing); the time difference is a few percent.
+Middleware has a real per-effect cost: `proceed()` re-emits the effect for a full downstream dispatch round trip, measuring a few times a plain handler — keep `intercept` off hot-path effects. A stateful `handleS` costs only slightly more than a plain `handle` per effect (the state pair and its boxing).
 
 Middleware on a multi-shot effect (such as `NonDet`, see below) cannot use `intercept`: `proceed()` suspends the rule block, and the downstream handler then resumes that one-shot block once per option. Write it with `interpret` instead, re-emitting the effect and continuing with `flatMap`, which is replayable:
 
