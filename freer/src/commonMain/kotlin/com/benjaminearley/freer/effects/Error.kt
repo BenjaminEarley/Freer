@@ -5,6 +5,10 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
+/**
+ * Handle [Error] as a [Result]: success with the final value, or failure carrying the
+ * [Error.Raise] reason, in which case the rest of the program is abandoned.
+ */
 public fun <A> Program<A>.raise(): Program<Result<A>> =
     interpret<Error<*>, A, Result<A>>(
         transformDone = { value -> Program.Done(Result.success(value)) },
@@ -33,10 +37,13 @@ public fun <A> Program<A>.catchError(recover: (String) -> Program<A>): Program<A
         }
     }
 
+/** Failure: handled by [raise] or [catchError]. */
 public sealed interface Error<out R> : Effect<R> {
+    /** Fail with [reason]; never answered, so the program does not continue past it. */
     public data class Raise(
         public val reason: String,
     ) : Error<Nothing>
 }
 
+/** Fail with [reason]: performs [Error.Raise]. */
 public fun fail(reason: String): Program<Nothing> = perform(Error.Raise(reason))

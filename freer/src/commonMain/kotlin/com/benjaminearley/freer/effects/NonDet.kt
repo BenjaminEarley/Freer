@@ -32,12 +32,22 @@ import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
 
+/**
+ * Nondeterminism: handled by [collectAll] or [msplit], which resume the same
+ * continuation once per option.
+ */
 public sealed interface NonDet<out R> : Effect<R> {
+    /** Continue once for each of [options], in order; no options prunes the branch. */
     public data class Choose(
         public val options: List<Any?>,
     ) : NonDet<Any?>
 }
 
+/**
+ * Branch on every one of [options]. The continuation is resumed once per option, so
+ * do not bind a choice directly inside a `program { }` block: its continuation is
+ * single-shot. Build the branch with flatMap, or a fresh block inside the flatMap.
+ */
 public fun <T> choose(options: List<T>): Program<T> = perform(NonDet.Choose(options)) as Program<T>
 
 /** Prune this branch unless [condition] holds. */
@@ -66,7 +76,7 @@ public fun <A> Program<A>.collectAll(): Program<List<A>> =
         },
     )
 
-/** Binary choice between two programs. */
+/** Binary choice: the answers of [first], then those of [second]. */
 public fun <A> orElse(
     first: Program<A>,
     second: Program<A>,

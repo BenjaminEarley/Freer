@@ -12,14 +12,18 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
 
-// Blocking edge runner for interceptor-free contexts (a plain main, a thread you
-// own): terminal, and every interpretation step runs on the calling thread. Each
-// thunk is started in place; if it suspends, the caller blocks until the completion
-// callback hands the Result across a queue — the transfer provides the
-// happens-before edge, so handler state never needs synchronization, and thunk
-// failures are rethrown here, on the caller's thread. The thunk itself may hop
-// threads internally; only interpretation is confined.
+/**
+ * JVM-only blocking edge runner for interceptor-free contexts (a plain main, a thread
+ * you own): runs every IO thunk and returns the final value, blocking the caller while
+ * a thunk is suspended. Every interpretation step stays on the calling thread, so
+ * handler state needs no synchronization. Apply it after all other handlers.
+ */
 public fun <A> Program<A>.ioBlocking(): A {
+    // Each thunk is started in place; if it suspends, the caller blocks until the
+    // completion callback hands the Result across a queue — the transfer provides the
+    // happens-before edge, and thunk failures are rethrown here, on the caller's
+    // thread. The thunk itself may hop threads internally; only interpretation is
+    // confined.
     var current: Program<A> = this
     while (true) {
         when (val c = current) {

@@ -15,6 +15,7 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
+/** Generator output: handled by [coroutine]. */
 public sealed interface Emit<out R> : Effect<R> {
     /** Hand [value] to the driver and pause until it resumes the generator. */
     public data class Yield<out T>(
@@ -22,27 +23,37 @@ public sealed interface Emit<out R> : Effect<R> {
     ) : Emit<Unit>
 }
 
+/** Yield [value] to the driver of the enclosing [coroutine] and pause until resumed. */
 public fun <T> yieldValue(value: T): Program<Unit> = perform(Emit.Yield(value))
 
+/** One step of a generator run by [coroutine]: either [Finished] or [Yielded]. */
 public sealed class Status<out T, out A> {
+    /** The generator returned [result]; there is nothing left to resume. */
     public data class Finished<out A>(
         public val result: A,
     ) : Status<Nothing, A>()
 
+    /**
+     * The generator yielded [value]. [resume] returns the program for the next step;
+     * the driver decides when, and whether, to run it.
+     */
     public class Yielded<out T, out A>(
         public val value: T,
         public val resume: () -> Program<Status<T, A>>,
     ) : Status<T, A>()
 }
 
-// The continuation is captured and invoked after the rule has returned — a
-// deferred resume, so it produces a real Program each time it's called.
-// The yielded type is erased like any effect payload: every Yield this handler
-// sees is reported as a T, so one coroutine() should see one yielded type.
+/**
+ * Run this program as a generator: every [Emit.Yield] pauses it as a [Status.Yielded]
+ * holding the rest of the program, and completion gives [Status.Finished]. The
+ * yielded type is erased, so one coroutine() should see one yielded type [T].
+ */
 public fun <T, A> Program<A>.coroutine(): Program<Status<T, A>> =
     interpret<Emit<*>, A, Status<T, A>>(
         transformDone = { a -> Program.Done(Status.Finished(a)) },
         rule = { op, resume ->
+            // The continuation is captured and invoked after the rule has returned — a
+            // deferred resume, so it produces a real Program each time it's called.
             when (op) {
                 is Emit.Yield<*> -> Program.Done(Status.Yielded(op.value as T) { resume(Unit) })
             }

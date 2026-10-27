@@ -18,6 +18,11 @@ import kotlin.coroutines.resume
  */
 @RestrictsSuspension
 public sealed class ProgramScope {
+    /**
+     * Run this sub-program as the next step of the enclosing block and return its value.
+     * A block's continuation is single-shot: binding a multi-shot effect (such as a
+     * choice under collectAll) directly in a block fails when it is resumed twice.
+     */
     public suspend fun <A> Program<A>.bind(): A =
         suspendCoroutineUninterceptedOrReturn { cont ->
             val program = this@bind

@@ -9,23 +9,28 @@ import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.resume
 import com.benjaminearley.freer.trampolineMisuse
 
-// Handlers that need real async I/O emit IO effects via performIO { }.
-// A single suspend io() at the edge handles them all.
+/**
+ * Real (possibly asynchronous) I/O, emitted with [performIO] — typically by handlers
+ * that translate their effects into I/O — and run at the edge by [io] or, on the JVM,
+ * `ioBlocking()`.
+ */
 public sealed interface IO<out R> : Effect<R> {
+    /** Run [thunk] and respond with its result. */
     public data class Suspend<R>(
         public val thunk: suspend () -> R,
     ) : IO<R>
 }
 
+/** A program that runs [block] when interpreted by [io] and produces its result. */
 public fun <R> performIO(block: suspend () -> R): Program<R> = perform(IO.Suspend(block))
 
-// Terminal suspend runner. Apply AFTER all other effect handlers have stripped
-// their effects: runs every IO thunk and returns the program's final value.
-// Threading: thunk resumptions re-enter through the ContinuationInterceptor of the
-// calling context, if any — under a coroutine dispatcher, interpretation stays on
-// that dispatcher. In interceptor-free contexts (e.g. a bare suspend main), the
-// first thunk that resumes on a foreign thread migrates the rest of interpretation
-// onto it; use ioBlocking() there instead.
+/**
+ * Terminal suspend runner: runs every IO thunk and returns the program's final value.
+ * Apply it after all other handlers; any other effect left fails. Under a coroutine
+ * dispatcher, interpretation stays on that dispatcher; in an interceptor-free context
+ * the first thunk that resumes on another thread moves the rest of interpretation
+ * there (on the JVM, use `ioBlocking()` instead).
+ */
 public suspend fun <A> Program<A>.io(): A {
     var current: Program<A> = this
     while (true) {

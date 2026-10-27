@@ -18,6 +18,7 @@ import com.benjaminearley.freer.flatMap
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
+/** A read-only environment: handled by [runReader], overridden locally by [local]. */
 public sealed interface Reader<out R> : Effect<R> {
     /** Read the environment. */
     public data object Ask : Reader<Any?>

@@ -13,12 +13,26 @@ import kotlin.reflect.KClass
 /** The "Existential" type. We use Any? because of type erasure. */
 internal typealias Erased = Any?
 
-// interpret: handle and remove an effect
+/**
+ * Handle and remove every effect of family [E], mapping the final value with
+ * [transformDone]. [rule] receives the effect and a `resume` continuation; a direct
+ * `resume` call inside the rule may happen at most once and its result must be
+ * returned unchanged (the interpreter trampolines it and throws on misuse). To
+ * transform the result, call `resume` from a deferred context such as inside
+ * `program { }` or a `flatMap` on a non-`Done` program. Applied lazily.
+ */
 public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
     noinline rule: (E, (Any?) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpret(this, E::class, transformDone, rule)
 
+/**
+ * Handle and remove every effect of family [E]. A direct `resume` call inside [rule]
+ * may happen at most once and its result must be returned unchanged (the interpreter
+ * trampolines it and throws on misuse); to transform the result, call `resume` from a
+ * deferred context such as inside `program { }` or a `flatMap` on a non-`Done`
+ * program. The handler is applied lazily, when the program is run.
+ */
 public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Any?) -> Program<A>) -> Program<A>): Program<A> =
     interpret(
         transformDone = { Program.Done(it) },
@@ -26,8 +40,10 @@ public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule:
     )
 
 /**
- * Handle and remove an effect, threading state [S] through every step (the paper's
- * handleRelayS). The same rule contract and lazy application as [interpret] apply.
+ * Handle and remove every effect of family [E], threading state [S] from
+ * [initialState] through every step; [transformDone] sees the final state and value.
+ * `resume` takes the next state and the response. The rule contract and lazy
+ * application of [interpret] apply.
  */
 public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
@@ -35,6 +51,11 @@ public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     noinline rule: (S, E, (S, Any?) -> Program<B>) -> Program<B>,
 ): Program<B> = lazyInterpretS(this, initialState, E::class, transformDone, rule)
 
+/**
+ * Handle and remove every effect of family [E], threading state [S] from
+ * [initialState]; `resume` takes the next state and the response. The rule contract
+ * and lazy application of [interpret] apply.
+ */
 public inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
     noinline rule: (S, E, (S, Any?) -> Program<A>) -> Program<A>,
@@ -128,7 +149,9 @@ internal sealed class Pipeline<in Input, out Output> {
 
 /**
  * A request that expects a response of type [R]. Effect families are the open union of
- * everything a [Program] can ask its handlers to do.
+ * everything a [Program] can ask its handlers to do. Handlers match on the erased
+ * class, so declare a family as a sealed interface and handle it star-projected
+ * (`handle<MyEffect<*>, A>`).
  */
 public interface Effect<out R>
 
@@ -138,7 +161,7 @@ public interface Effect<out R>
  * [interpret]) and extract the value with [runOrThrow] or [run].
  */
 public sealed class Program<out A> {
-    // Pure: The program is finished with a final value
+    /** A finished program holding its final [value]; it performs no effects. */
     public data class Done<out A>(
         val value: A,
     ) : Program<A>()
@@ -251,6 +274,10 @@ internal fun trampolineMisuse(): Nothing =
 public fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
     if (this is Program.Done) f(this.value) else then(Pipeline.FnStep(f))
 
+/**
+ * Transform this program's final value with [f]. Like [flatMap], [f] runs immediately
+ * on a [Program.Done] value and during interpretation otherwise.
+ */
 public fun <A, B> Program<A>.map(f: (A) -> B): Program<B> =
     if (this is Program.Done) Program.Done(f(this.value)) else then(Pipeline.FnStep { Program.Done(f(it)) })
 
