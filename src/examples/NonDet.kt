@@ -7,9 +7,13 @@
  * coroutines — it works here because the continuation is an immutable Pipeline
  * value that can be replayed.
  *
- * Programs under collectAll must be built with perform/flatMap chains:
- * program { } blocks are single-shot per interpretation and throw on a second
- * resumption of the same suspension.
+ * program { } blocks and the rule blocks of handle, intercept and handleS are
+ * one-shot coroutines, so one fails under these handlers only when its OWN
+ * continuation is resumed more than once: the block binds the choice itself,
+ * proceeds on it, or binds a sub-program that performs it. A program { } created
+ * inside a flatMap closure after the choice is fine (each branch gets a fresh
+ * one), as is a rule that answers without suspending, or middleware on an
+ * unrelated effect.
  *
  * Three consequences worth knowing: d sequential choices of s options explore
  * s^d branches — there is no implicit pruning. A stateful handler applied inside
@@ -72,8 +76,9 @@ fun <A> orElse(
 
 /**
  * Split the search: null if it has no answers, otherwise the first answer paired
- * with the rest of the search as a replayable program. Options past the first
- * answer are stitched into the rest lazily — they are only resumed if it is run.
+ * with the rest of the search as a replayable program. The rest is built in O(1):
+ * the first answer's own rest, then one choice over the options not yet tried —
+ * each of those is resumed only if the rest is run and reaches it.
  */
 fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
     interpret<NonDet<*>, A, Pair<A, Program<A>>?>(
@@ -93,11 +98,13 @@ fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
                             split == null -> null
                             next == op.options.size -> split
                             else -> {
-                                val rest =
-                                    op.options.subList(next, op.options.size).fold(split.second) { acc, option ->
-                                        orElse(acc, unsplit(program { resume(option).bind() }))
-                                    }
-                                split.first to rest
+                                // One flat choice over the untried options, behind the first
+                                // answer's own rest. The flatMap closure runs only when the
+                                // rest is interpreted and reaches that option — after this
+                                // rule has returned — so its resume call is deferred.
+                                val remaining = op.options.subList(next, op.options.size)
+                                val others = choose(remaining).flatMap { option -> unsplit(resume(option)) }
+                                split.first to orElse(split.second, others)
                             }
                         }
                     }

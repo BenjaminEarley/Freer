@@ -42,6 +42,7 @@ import ffree.examples.ifte
 import ffree.examples.local
 import ffree.examples.msplit
 import ffree.examples.once
+import ffree.examples.orElse
 import ffree.examples.runReader
 import ffree.examples.yieldValue
 import kotlin.concurrent.thread
@@ -729,6 +730,43 @@ suspend fun main() {
                     }
                 }.runOrThrow()
         }
+    }
+
+    semTest("once over a large choice commits to the first answer") {
+        val first = once(choose((1..200_000).toList())).collectAll().runOrThrow()
+        check(first == listOf(1)) { "got $first" }
+    }
+
+    semTest("msplit's rest over a large choice collects every remaining option in order") {
+        val split = choose((1..5_000).toList()).msplit().runOrThrow()
+        checkNotNull(split)
+        check(split.first == 1) { "got ${split.first}" }
+        val rest = split.second.collectAll().runOrThrow()
+        check(rest == (2..5_000).toList()) { "got ${rest.size} results ending in ${rest.lastOrNull()}" }
+    }
+
+    semTest("msplit then unsplit keeps the depth-first answer order of a two-level search") {
+        val search = choose(listOf(1, 2, 3)).flatMap { x -> choose(listOf(10, 20)).map { x * it } }
+        val direct = search.collectAll().runOrThrow()
+        check(direct == listOf(10, 20, 20, 40, 30, 60)) { "got $direct" }
+
+        val resplit =
+            search
+                .msplit()
+                .flatMap { s -> if (s == null) choose(emptyList()) else orElse(Program.Done(s.first), s.second) }
+                .collectAll()
+                .runOrThrow()
+        check(resplit == direct) { "got $resplit" }
+
+        // Enumerating by repeatedly splitting the rest visits the same answers in the same order.
+        val enumerated = mutableListOf<Int>()
+        var rest: Program<Int> = search
+        while (true) {
+            val s = rest.msplit().runOrThrow() ?: break
+            enumerated += s.first
+            rest = s.second
+        }
+        check(enumerated == direct) { "got $enumerated" }
     }
 
     println()
