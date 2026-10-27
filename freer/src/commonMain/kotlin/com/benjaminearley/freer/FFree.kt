@@ -24,7 +24,7 @@ internal typealias Erased = Any?
 public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
     noinline rule: (E, (Any?) -> Program<B>) -> Program<B>,
-): Program<B> = lazyInterpret(this, E::class, transformDone, rule)
+): Program<B> = interpretWith(E::class, transformDone, rule)
 
 /**
  * Handle and remove every effect of family [E]. A direct `resume` call inside [rule]
@@ -34,10 +34,7 @@ public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
  * program. The handler is applied lazily, when the program is run.
  */
 public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Any?) -> Program<A>) -> Program<A>): Program<A> =
-    interpret(
-        transformDone = { Program.Done(it) },
-        rule = rule,
-    )
+    interpretWith(E::class, rule)
 
 /**
  * Handle and remove every effect of family [E], threading state [S] from
@@ -49,7 +46,7 @@ public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
     noinline transformDone: (S, A) -> Program<B>,
     noinline rule: (S, E, (S, Any?) -> Program<B>) -> Program<B>,
-): Program<B> = lazyInterpretS(this, initialState, E::class, transformDone, rule)
+): Program<B> = interpretSWith(E::class, initialState, transformDone, rule)
 
 /**
  * Handle and remove every effect of family [E], threading state [S] from
@@ -59,12 +56,7 @@ public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
 public inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
     noinline rule: (S, E, (S, Any?) -> Program<A>) -> Program<A>,
-): Program<A> =
-    interpretS(
-        initialState = initialState,
-        transformDone = { _, a -> Program.Done(a) },
-        rule = rule,
-    )
+): Program<A> = interpretSWith(E::class, initialState, rule)
 
 /** Extract the final value of a fully handled program, or throw naming the unhandled effect. */
 public fun <A> Program<A>.runOrThrow(): A =
@@ -198,7 +190,6 @@ public sealed class Program<out A> {
 
 // Unwrap Defer nodes — draining any binds queued on them — until a concrete
 // Done/Suspended program emerges.
-@PublishedApi
 internal fun <A> Program<A>.force(): Program<A> {
     var current: Program<Erased> = this
     var pending: Pipeline<Erased, Erased>? = null
@@ -239,24 +230,36 @@ internal fun <A> Program<A>.force(): Program<A> {
     }
 }
 
-// Lazy entry points for interpret/interpretS: applying a handler builds a description;
-// the interpreter loop runs when a terminal operation forces it.
+// Non-inline entry points behind interpret/interpretS, so that the reified wrappers
+// inline nothing but a KClass lookup. Applying a handler builds a description; the
+// interpreter loop runs when a terminal operation forces it.
 @PublishedApi
-internal fun <Target : Effect<*>, A, B> lazyInterpret(
-    initialProgram: Program<A>,
-    targetClass: KClass<Target>,
+internal fun <E : Effect<*>, A, B> Program<A>.interpretWith(
+    type: KClass<E>,
     transformDone: (A) -> Program<B>,
-    rule: (Target, (Erased) -> Program<B>) -> Program<B>,
-): Program<B> = Program.Defer { interpreterLoop(initialProgram, targetClass, transformDone, rule) }
+    rule: (E, (Erased) -> Program<B>) -> Program<B>,
+): Program<B> = Program.Defer { interpreterLoop(this, type, transformDone, rule) }
 
 @PublishedApi
-internal fun <Target : Effect<*>, S, A, B> lazyInterpretS(
-    initialProgram: Program<A>,
+internal fun <E : Effect<*>, A> Program<A>.interpretWith(
+    type: KClass<E>,
+    rule: (E, (Erased) -> Program<A>) -> Program<A>,
+): Program<A> = interpretWith(type, { Program.Done(it) }, rule)
+
+@PublishedApi
+internal fun <E : Effect<*>, S, A, B> Program<A>.interpretSWith(
+    type: KClass<E>,
     initialState: S,
-    targetClass: KClass<Target>,
     transformDone: (S, A) -> Program<B>,
-    rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
-): Program<B> = Program.Defer { interpreterLoopS(initialProgram, initialState, targetClass, transformDone, rule) }
+    rule: (S, E, (S, Erased) -> Program<B>) -> Program<B>,
+): Program<B> = Program.Defer { interpreterLoopS(this, initialState, type, transformDone, rule) }
+
+@PublishedApi
+internal fun <E : Effect<*>, S, A> Program<A>.interpretSWith(
+    type: KClass<E>,
+    initialState: S,
+    rule: (S, E, (S, Erased) -> Program<A>) -> Program<A>,
+): Program<A> = interpretSWith(type, initialState, { _, a -> Program.Done(a) }, rule)
 
 internal fun trampolineMisuse(): Nothing =
     throw IllegalStateException(

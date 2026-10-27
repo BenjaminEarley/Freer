@@ -11,6 +11,7 @@ import kotlin.coroutines.intrinsics.createCoroutineUnintercepted
 import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 import kotlin.coroutines.resume
+import kotlin.reflect.KClass
 
 /**
  * Receiver scope of [program] blocks: sequence sub-programs with [bind]. Suspension is
@@ -48,8 +49,7 @@ public sealed class ProgramScope {
 // Continuation supertype lives here rather than on the public type so that block code
 // cannot call resumeWith and complete the coroutine behind the builder's back. One
 // object per program{} evaluation and per rule invocation.
-@PublishedApi
-internal class ProgramScopeImpl @PublishedApi internal constructor() :
+private class ProgramScopeImpl :
     ProgramScope(),
     Continuation<Any?> {
     override val context: CoroutineContext = EmptyCoroutineContext
@@ -76,8 +76,7 @@ internal class ProgramScopeImpl @PublishedApi internal constructor() :
         return COROUTINE_SUSPENDED
     }
 
-    @PublishedApi
-    internal fun <A> buildProgram(): Program<A> {
+    fun <A> buildProgram(): Program<A> {
         while (true) {
             if (completed) return Program.Done(completedValue as A)
             // Neither completed nor parked on a bind means the coroutine suspended
@@ -151,8 +150,7 @@ public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
 // scalar-replaced by the JIT when the rule returns without suspending — its measured
 // cost is zero in that case, so there is deliberately no non-suspend fast-path
 // overload.
-@PublishedApi
-internal inline fun <A, B> runRuleBlock(
+private inline fun <A, B> runRuleBlock(
     noinline block: suspend ProgramScope.() -> A,
     crossinline onValue: (A) -> Program<B>,
 ): Program<B> {
@@ -168,8 +166,7 @@ internal inline fun <A, B> runRuleBlock(
 // Rule responses for handle, intercept and handleS are plain values. A Program response
 // almost always means a sub-program was returned without .bind(), which would otherwise
 // drop its effects silently (Unit effects) or fail later at the use site (value effects).
-@PublishedApi
-internal fun checkResponse(
+private fun checkResponse(
     effect: Any,
     response: Any?,
 ): Any? {
@@ -177,7 +174,7 @@ internal fun checkResponse(
     return response
 }
 
-internal fun programResponseError(effect: Any): Nothing {
+private fun programResponseError(effect: Any): Nothing {
     val name = effect::class.simpleName ?: effect.toString()
     throw IllegalStateException(
         "Rule for $name returned a Program instead of a response. Missing .bind()? " +
@@ -187,7 +184,16 @@ internal fun programResponseError(effect: Any): Nothing {
 
 /** Interpret with auto-resume: the block's return value is the effect's response. */
 public inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
-    interpret<E, A> { op, resume ->
+    handleWith(E::class, rule)
+
+// Non-inline entry point behind handle, so that the reified wrapper inlines nothing but
+// a KClass lookup.
+@PublishedApi
+internal fun <E : Effect<*>, A> Program<A>.handleWith(
+    type: KClass<E>,
+    rule: suspend ProgramScope.(E) -> Any?,
+): Program<A> =
+    interpretWith(type) { op, resume ->
         runRuleBlock({ rule(op) }) { response -> resume(checkResponse(op, response)) }
     }
 
@@ -198,8 +204,7 @@ public inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: su
 // state machine, whereas a suspend lambda is copied together with its continuation
 // fields on every invocation. It cannot call bind() itself — a suspend function
 // outside the restricted scope may not — so it parks the program via suspendOn.
-@PublishedApi
-internal class Proceed(
+private class Proceed(
     private val effect: Effect<*>,
 ) : suspend (ProgramScope) -> Any? {
     override suspend fun invoke(scope: ProgramScope): Any? =
@@ -213,8 +218,16 @@ internal class Proceed(
  */
 public inline fun <reified E : Effect<*>, A> Program<A>.intercept(
     noinline rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
+): Program<A> = interceptWith(E::class, rule)
+
+// Non-inline entry point behind intercept, so that the reified wrapper inlines nothing
+// but a KClass lookup.
+@PublishedApi
+internal fun <E : Effect<*>, A> Program<A>.interceptWith(
+    type: KClass<E>,
+    rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
 ): Program<A> =
-    interpret<E, A> { op, resume ->
+    interpretWith(type) { op, resume ->
         val proceed = Proceed(op)
         runRuleBlock({ rule(op, proceed) }) { response -> resume(checkResponse(op, response)) }
     }
@@ -227,7 +240,16 @@ public inline fun <reified E : Effect<*>, A> Program<A>.intercept(
 public inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
     initialState: S,
     noinline rule: suspend ProgramScope.(S, E) -> Pair<S, Any?>,
+): Program<A> = handleSWith(E::class, initialState, rule)
+
+// Non-inline entry point behind handleS, so that the reified wrapper inlines nothing
+// but a KClass lookup.
+@PublishedApi
+internal fun <E : Effect<*>, S, A> Program<A>.handleSWith(
+    type: KClass<E>,
+    initialState: S,
+    rule: suspend ProgramScope.(S, E) -> Pair<S, Any?>,
 ): Program<A> =
-    interpretS<E, S, A>(initialState) { s, op, resume ->
+    interpretSWith(type, initialState) { s, op, resume ->
         runRuleBlock({ rule(s, op) }) { (newState, response) -> resume(newState, checkResponse(op, response)) }
     }

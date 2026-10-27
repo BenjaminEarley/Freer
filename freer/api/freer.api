@@ -3,19 +3,14 @@ public abstract interface class com/benjaminearley/freer/Effect {
 
 public final class com/benjaminearley/freer/FFreeKt {
 	public static final fun flatMap (Lcom/benjaminearley/freer/Program;Lkotlin/jvm/functions/Function1;)Lcom/benjaminearley/freer/Program;
-	public static final fun force (Lcom/benjaminearley/freer/Program;)Lcom/benjaminearley/freer/Program;
-	public static final fun lazyInterpret (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)Lcom/benjaminearley/freer/Program;
-	public static final fun lazyInterpretS (Lcom/benjaminearley/freer/Program;Ljava/lang/Object;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;)Lcom/benjaminearley/freer/Program;
+	public static final fun interpretSWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Ljava/lang/Object;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function3;)Lcom/benjaminearley/freer/Program;
+	public static final fun interpretSWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Ljava/lang/Object;Lkotlin/jvm/functions/Function3;)Lcom/benjaminearley/freer/Program;
+	public static final fun interpretWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;)Lcom/benjaminearley/freer/Program;
+	public static final fun interpretWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function2;)Lcom/benjaminearley/freer/Program;
 	public static final fun map (Lcom/benjaminearley/freer/Program;Lkotlin/jvm/functions/Function1;)Lcom/benjaminearley/freer/Program;
 	public static final fun perform (Lcom/benjaminearley/freer/Effect;)Lcom/benjaminearley/freer/Program;
 	public static final fun run (Lcom/benjaminearley/freer/Program;)Ljava/lang/Object;
 	public static final fun runOrThrow (Lcom/benjaminearley/freer/Program;)Ljava/lang/Object;
-}
-
-public final class com/benjaminearley/freer/Proceed : kotlin/coroutines/jvm/internal/SuspendFunction, kotlin/jvm/functions/Function2 {
-	public fun <init> (Lcom/benjaminearley/freer/Effect;)V
-	public fun invoke (Lcom/benjaminearley/freer/ProgramScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public synthetic fun invoke (Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract class com/benjaminearley/freer/Program {
@@ -33,20 +28,14 @@ public final class com/benjaminearley/freer/Program$Done : com/benjaminearley/fr
 }
 
 public final class com/benjaminearley/freer/ProgramDslKt {
-	public static final fun checkResponse (Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+	public static final fun handleSWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Ljava/lang/Object;Lkotlin/jvm/functions/Function4;)Lcom/benjaminearley/freer/Program;
+	public static final fun handleWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function3;)Lcom/benjaminearley/freer/Program;
+	public static final fun interceptWith (Lcom/benjaminearley/freer/Program;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function4;)Lcom/benjaminearley/freer/Program;
 	public static final fun program (Lkotlin/jvm/functions/Function2;)Lcom/benjaminearley/freer/Program;
-	public static final fun runRuleBlock (Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;)Lcom/benjaminearley/freer/Program;
 }
 
 public abstract class com/benjaminearley/freer/ProgramScope {
 	public final fun bind (Lcom/benjaminearley/freer/Program;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-
-public final class com/benjaminearley/freer/ProgramScopeImpl : com/benjaminearley/freer/ProgramScope, kotlin/coroutines/Continuation {
-	public fun <init> ()V
-	public final fun buildProgram ()Lcom/benjaminearley/freer/Program;
-	public fun getContext ()Lkotlin/coroutines/CoroutineContext;
-	public fun resumeWith (Ljava/lang/Object;)V
 }
 
 public abstract interface class com/benjaminearley/freer/effects/Emit : com/benjaminearley/freer/Effect {
