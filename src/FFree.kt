@@ -313,14 +313,22 @@ internal tailrec fun <A, B> resume(
                 // Left is a single step: Run it.
                 val leftStep = left as Pipeline.Step<A, Erased>
 
-                when (val result = leftStep.fn(input).force()) {
+                when (val result = leftStep.fn(input)) {
                     is Program.Done -> {
                         // Step finished cleanly: Feed result into the Right side
                         resume(right as Pipeline<Erased, B>, result.value)
                     }
 
                     is Program.Defer -> {
-                        error("unreachable: force() removes Defer nodes")
+                        // Step returned a lazy program. Invariant: a Defer is never forced
+                        // from inside a step or a bind — only force() and the interpreter
+                        // loops force, and they loop. Forcing here would nest one JVM frame
+                        // per level of non-tail bind recursion (each level's thunk reaches
+                        // this point again). Instead, queue the Right side behind the binds
+                        // already pending on the Defer and hand it back to the enclosing
+                        // loop, which drains the whole chain iteratively.
+                        val own = result.pending
+                        Program.Defer<B>(if (own == null) right else Pipeline.Join(own, right), result.thunk)
                     }
 
                     is Program.Bounce -> {
@@ -339,9 +347,6 @@ internal tailrec fun <A, B> resume(
                     }
                 }
             } else {
-                // to compare traditional implementation in benchmark test
-                // resume(Pipeline.Join(left, right) as Pipeline<A, B>, input)
-
                 // Left is a Join: Rotate Right to maintain performance guarantees.
                 // ( (A + B) + C ) -> ( A + (B + C) )
                 val leftJoin = left as Pipeline.Join
@@ -369,10 +374,15 @@ internal fun directResumeDiscarded(): Nothing =
 // Stack-safe Generic Interpreter Loop
 // Uses a trampoline: when a rule calls resume() directly and returns the result,
 // the continuation returns the internal Bounce marker instead of recursing. The
-// while-loop detects it and iterates. When resume() is deferred (e.g. inside flatMap),
-// the continuation falls back to normal recursion — which is safe since the stack
-// resets at the deferral point. Violations of the rule contract (see interpret)
-// fail with IllegalStateException instead of corrupting silently.
+// while-loop detects it and iterates. When resume() is called from a deferred
+// context (e.g. bound inside a program{} block), the continuation re-enters this
+// loop recursively — but only one level deep: the nested loop runs until the next
+// matching effect, whose rule returns its own deferred program, and then returns
+// it unforced. That Defer is drained by the enclosing force() loop (a Defer is
+// never forced from inside a step or a bind), so every deferred resume starts
+// from the same stack depth instead of nesting one frame per effect. Violations
+// of the rule contract (see interpret) fail with IllegalStateException instead
+// of corrupting silently.
 @PublishedApi
 internal fun <Target : Effect<*>, A, B> interpreterLoop(
     initialProgram: Program<A>,

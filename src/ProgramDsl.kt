@@ -50,17 +50,23 @@ class ProgramScope : Continuation<Any?> {
                 }
 
                 is State.Suspended -> {
-                    // Force the bound program first: a Defer that yields Done then takes
-                    // the pure fast path below instead of allocating a flatMap wrapper.
-                    // buildProgram only runs during interpretation, which would force the
-                    // thunk moments later in this same pass anyway.
-                    val program = s.program.force()
+                    val program = s.program
                     if (program is Program.Done) {
                         // Pure bind: resume in place and keep looping. Recursing here
                         // (as the flatMap path below does) overflows the stack on long
                         // chains of already-Done binds.
                         s.continuation.resumeWith(Result.success(program.value))
                     } else {
+                        // Suspended or Defer: queue the continuation behind it without
+                        // forcing. Invariant: a Defer is never forced from inside a step
+                        // or a bind — only force() and the interpreter loops force, and
+                        // they loop. program{} runs buildProgram inside its own Defer's
+                        // thunk, so forcing here would nest one JVM frame per level
+                        // whenever the bound Defer's thunk binds another Defer (nested
+                        // recursive program{} blocks, or a rule that binds resume).
+                        // Defer.flatMap appends to the Defer's pending queue in O(1), and
+                        // the enclosing force() loop drains the chain iteratively.
+                        //
                         // The coroutine behind this continuation is single-shot; guard
                         // against a second resumption, which would silently re-run only
                         // the code after the last bind with stale locals.

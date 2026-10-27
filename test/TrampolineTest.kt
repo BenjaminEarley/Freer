@@ -3,12 +3,18 @@
  * through a differently shaped program/handler stack that could overflow the JVM
  * stack: direct-resume trampolining, the handle DSL's Done-path optimization,
  * effect forwarding past a non-matching handler, stateful interpretation, deferred
- * resumes via intercept, left-associated bind chains, deep non-tail recursion, and
- * long chains of pure binds.
+ * resumes via intercept, left-associated bind chains, deep non-tail recursion,
+ * long chains of pure binds, bind chains queued on a deferred head, resume bound
+ * inside a program{} block (deferred-context resume), sequential nondeterminism
+ * through collectAll, effect-free non-tail bind recursion, nested program{}
+ * recursion that performs no effect, and recursion that binds before performing
+ * an effect.
  */
 
 import ffree.Effect
 import ffree.Program
+import ffree.examples.choose
+import ffree.examples.collectAll
 import ffree.flatMap
 import ffree.handle
 import ffree.intercept
@@ -271,6 +277,102 @@ fun main() {
             prog = prog.flatMap { count -> Program.Done(count + 1) }
         }
         val result = prog.runOrThrow()
+        check(result == N) { "Expected $N, got $result" }
+        result
+    }
+
+    test("12. interpret with resume bound inside program{} (deferred-context resume)") {
+        // The documented way to post-process a continuation's result: call resume
+        // from a deferred context. Every effect then goes through a program{} thunk
+        // that binds the rest of the interpretation — a deferred program that must
+        // not be forced in place, or each effect nests a frame.
+        val prog =
+            program {
+                var count = 0
+                repeat(N) {
+                    perform(Increment).bind()
+                    count++
+                }
+                count
+            }
+
+        val result =
+            prog
+                .interpret<Counter<*>, Int> { op, resume ->
+                    when (op) {
+                        is Increment -> program { resume(Unit).bind() }
+                    }
+                }.runOrThrow()
+        check(result == N) { "Expected $N, got $result" }
+        result
+    }
+
+    test("13. sequential nondeterminism depth (N single-option chooses through collectAll)") {
+        // collectAll resumes each continuation from a program{} block, so N chained
+        // choices are N deferred-context resumes in a row. A hand-built chain, not
+        // a program{} block: collectAll is multi-shot.
+        var prog: Program<Int> = Program.Done(0)
+        repeat(N) {
+            prog = prog.flatMap { count -> choose(listOf(1)).map { count + it } }
+        }
+        val result = prog.collectAll().runOrThrow()
+        check(result == listOf(N)) { "Expected [$N], got $result" }
+        result.single()
+    }
+
+    test("14. effect-free non-tail bind recursion (flatMap into a deferred head, map after)") {
+        // No effect is ever performed, so no interpreter loop is involved: the
+        // step bound on the program{} head returns the next level's deferred
+        // program, which must be queued rather than forced.
+        fun rec(n: Int): Program<Int> =
+            if (n == 0) {
+                Program.Done(0)
+            } else {
+                program { 0 }.flatMap { rec(n - 1) }.map { it + 1 }
+            }
+
+        val result = rec(N).runOrThrow()
+        check(result == N) { "Expected $N, got $result" }
+        result
+    }
+
+    test("15. nested program{} recursion without an effect") {
+        // Each level binds the next level's program{} block and does work after
+        // it, so N deferred programs are nested with no effect in between.
+        fun rec(k: Int): Program<Int> =
+            if (k == 0) {
+                Program.Done(0)
+            } else {
+                program { rec(k - 1).bind() + 1 }
+            }
+
+        val result = rec(N).runOrThrow()
+        check(result == N) { "Expected $N, got $result" }
+        result
+    }
+
+    test("16. recursive bind before the effect (program{} recursion, then perform)") {
+        // The recursive bind comes first, so all N levels are entered before the
+        // first effect is performed; the effect-driven unwind then runs under the
+        // handler's trampoline.
+        fun rec(k: Int): Program<Int> =
+            if (k == 0) {
+                Program.Done(0)
+            } else {
+                program {
+                    val r = rec(k - 1).bind()
+                    perform(Increment).bind()
+                    r + 1
+                }
+            }
+
+        val result =
+            rec(N)
+                .handle<Counter<*>, Int> { op ->
+                    when (op) {
+                        is Increment -> Unit
+                    }
+                }.runOrThrow()
         check(result == N) { "Expected $N, got $result" }
         result
     }
