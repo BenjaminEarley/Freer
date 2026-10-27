@@ -4,6 +4,18 @@ Extensible Effects for Kotlin, based on [Freer Monads, More Extensible Effects](
 
 Programs are pure data structures that describe computations with effects. Effects are handled by composable interpreters that can be stacked, reordered, and swapped — separating *what* a program does from *how* it's executed. A `Program` value is a reusable description: it can be interpreted any number of times, under different handler stacks.
 
+## When to use it
+
+Take a refund flow: load the order, call the payment provider, write a ledger entry, notify the customer. As a `Program` it is one value, and who is asking decides how it runs:
+
+- **Production** applies the real handlers — database, provider client, ledger, mail.
+- **Tests** apply an in-memory store and a scripted provider that fails on the second call, then assert on the exact sequence of effects performed: no mocking framework, no interfaces to maintain.
+- **Dry run** swaps in a handler that returns a planned provider reference without calling anyone and collects the ledger write instead of executing it — the same program, zero side effects, and the entry it *would* have written comes back as data.
+- **Audit** is an `intercept` applied in production only: log every provider call with the operator's identity, then `proceed()`. The refund code never learns it exists.
+- **Rollback policy** is chosen at the call site, not baked in: handle errors outside the ledger handler and a failed notification rolls the write back; handle them inside and the write survives (see [Errors & Exceptions](#errors--exceptions)).
+
+A `suspend` function with injected dependencies gives you the first two. The rest need flags and wrappers threaded through every call, or cannot be expressed at all, because a `suspend` function's effects happen as it runs and cannot be reordered or withheld afterwards. Skip `Program` for tight loops over millions of trivial effects or for code that only needs sequencing — there the interpreter is pure overhead. The sweet spot is business flows with a handful of effects per run that must be tested, previewed, audited, or replayed.
+
 Running main.kt:
 ```sh
 kotlinc -include-runtime -d /tmp/ffree.jar $(find src -name '*.kt') && java -jar /tmp/ffree.jar
@@ -190,7 +202,7 @@ JVM exceptions are *not* part of the model: any exception raised while a bound p
 
 ## Performance
 
-The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `test/Benchmark.kt`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `test/TrampolineTest.kt`). The demo's Scenario 5 (`src/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
+The implementation uses a [type-aligned queue](https://okmij.org/ftp/Haskell/Reflection.html) for O(n) interpretation of both left- and right-associated bind chains (see `test/Benchmark.kt`), and a trampoline plus queue concatenation for stack safety — 100K+ effects through stacked handlers, deep non-tail recursion, long sequential pure-bind chains, rules that resume from a deferred context, nested `program { }` recursion, and long sequential nondeterministic choices all run on a constant stack (see `test/TrampolineTest.kt`). The demo's Scenario 5 (`src/examples/BindChainComparison.kt`) races three encodings of one left-associated bind chain: a closure-composed iteratee (O(n²)), raw `suspend` lambdas (O(n), but one-shot and opaque), and `Program` (O(n), and a replayable, interceptable value). In absolute terms, measured on JDK 26 on an Apple-silicon Mac at 1M effects: about 10 ns and 140 bytes per effect through the `program { }` DSL and `handle`, roughly 2x a raw `suspend` loop doing the same work and 1.4x on the left-associated chain of Scenario 5. That gap is the reified continuation itself — a handful of small objects per effect — which is what makes a program replayable, interceptable, and multi-shot. The remaining stack bound is the depth of nested handler applications: each applied handler is an interpreter loop that stays on the stack while its inner program runs, so stack use grows with how many handlers are nested inside one another — not with program nesting depth or effect count.
 
 ## License
 
