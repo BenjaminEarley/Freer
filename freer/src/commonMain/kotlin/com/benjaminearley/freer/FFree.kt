@@ -8,6 +8,8 @@
 
 package com.benjaminearley.freer
 
+import kotlin.reflect.KClass
+
 /** The "Existential" type. We use Any? because of type erasure. */
 typealias Erased = Any?
 
@@ -15,7 +17,7 @@ typealias Erased = Any?
 inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
     noinline rule: (E, (Erased) -> Program<B>) -> Program<B>,
-): Program<B> = lazyInterpret(this, E::class.java, transformDone, rule)
+): Program<B> = lazyInterpret(this, E::class, transformDone, rule)
 
 inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Erased) -> Program<A>) -> Program<A>): Program<A> =
     interpret(
@@ -31,7 +33,7 @@ inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
     noinline transformDone: (S, A) -> Program<B>,
     noinline rule: (S, E, (S, Erased) -> Program<B>) -> Program<B>,
-): Program<B> = lazyInterpretS(this, initialState, E::class.java, transformDone, rule)
+): Program<B> = lazyInterpretS(this, initialState, E::class, transformDone, rule)
 
 inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
@@ -219,7 +221,7 @@ internal fun <A> Program<A>.force(): Program<A> {
 @PublishedApi
 internal fun <Target : Effect<*>, A, B> lazyInterpret(
     initialProgram: Program<A>,
-    targetClass: Class<Target>,
+    targetClass: KClass<Target>,
     transformDone: (A) -> Program<B>,
     rule: (Target, (Erased) -> Program<B>) -> Program<B>,
 ): Program<B> = Program.Defer { interpreterLoop(initialProgram, targetClass, transformDone, rule) }
@@ -228,7 +230,7 @@ internal fun <Target : Effect<*>, A, B> lazyInterpret(
 internal fun <Target : Effect<*>, S, A, B> lazyInterpretS(
     initialProgram: Program<A>,
     initialState: S,
-    targetClass: Class<Target>,
+    targetClass: KClass<Target>,
     transformDone: (S, A) -> Program<B>,
     rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
 ): Program<B> = Program.Defer { interpreterLoopS(initialProgram, initialState, targetClass, transformDone, rule) }
@@ -390,7 +392,7 @@ internal fun directResumeDiscarded(): Nothing =
 @PublishedApi
 internal fun <Target : Effect<*>, A, B> interpreterLoop(
     initialProgram: Program<A>,
-    targetClass: Class<Target>,
+    targetClass: KClass<Target>,
     transformDone: (A) -> Program<B>, // Logic for "Pure" values (A -> B)
     rule: (Target, (Erased) -> Program<B>) -> Program<B>, // Logic for "Impure" effects
 ): Program<B> {
@@ -415,7 +417,7 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
                 val effect = suspended.effect
                 val pipeline = suspended.pipeline
 
-                if (targetClass.isInstance(effect)) {
+                if (matchesEffect(targetClass, effect)) {
                     // MATCH: We found the effect we are looking for.
                     val resumer = Resumer(pipeline, targetClass, transformDone, rule)
                     val result = rule(effect as Target, resumer)
@@ -443,7 +445,7 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
 // the loop's parameters as fields rather than as a closure wrapped in a step.
 private class RelayStep<Target : Effect<*>, A, B>(
     private val pipeline: Pipeline<Erased, A>,
-    private val targetClass: Class<Target>,
+    private val targetClass: KClass<Target>,
     private val transformDone: (A) -> Program<B>,
     private val rule: (Target, (Erased) -> Program<B>) -> Program<B>,
 ) : Pipeline.Step<Erased, B>() {
@@ -456,7 +458,7 @@ private class RelayStep<Target : Effect<*>, A, B>(
 // than as a lambda plus a box for each captured variable.
 private class Resumer<Target : Effect<*>, A, B>(
     private val pipeline: Pipeline<Erased, A>,
-    private val targetClass: Class<Target>,
+    private val targetClass: KClass<Target>,
     private val transformDone: (A) -> Program<B>,
     private val rule: (Target, (Erased) -> Program<B>) -> Program<B>,
 ) : (Erased) -> Program<B> {
@@ -487,7 +489,7 @@ private class Resumer<Target : Effect<*>, A, B>(
 internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
     initialProgram: Program<A>,
     initialState: S,
-    targetClass: Class<Target>,
+    targetClass: KClass<Target>,
     transformDone: (S, A) -> Program<B>,
     rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
 ): Program<B> {
@@ -513,7 +515,7 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                 val effect = suspended.effect
                 val pipeline = suspended.pipeline
 
-                if (targetClass.isInstance(effect)) {
+                if (matchesEffect(targetClass, effect)) {
                     val resumer = ResumerS(pipeline, targetClass, transformDone, rule)
                     val result = rule(state, effect as Target, resumer)
                     resumer.direct = false
@@ -544,7 +546,7 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
 private class RelayStepS<Target : Effect<*>, S, A, B>(
     private val pipeline: Pipeline<Erased, A>,
     private val state: S,
-    private val targetClass: Class<Target>,
+    private val targetClass: KClass<Target>,
     private val transformDone: (S, A) -> Program<B>,
     private val rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
 ) : Pipeline.Step<Erased, B>() {
@@ -556,7 +558,7 @@ private class RelayStepS<Target : Effect<*>, S, A, B>(
 // direct call resumes with.
 private class ResumerS<Target : Effect<*>, S, A, B>(
     private val pipeline: Pipeline<Erased, A>,
-    private val targetClass: Class<Target>,
+    private val targetClass: KClass<Target>,
     private val transformDone: (S, A) -> Program<B>,
     private val rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
 ) : (S, Erased) -> Program<B> {

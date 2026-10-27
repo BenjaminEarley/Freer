@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -7,6 +9,7 @@ plugins {
 group = "com.benjaminearley"
 version = "0.1.0-SNAPSHOT"
 
+@OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class)
 kotlin {
     jvmToolchain(17)
 
@@ -20,7 +23,30 @@ kotlin {
         }
     }
 
+    wasmJs {
+        nodejs()
+    }
+    macosArm64()
+    macosX64()
+    iosArm64()
+    iosSimulatorArm64()
+    linuxX64()
+    mingwX64()
+
+    // Every target except the JVM shares nonJvmMain.
+    applyDefaultHierarchyTemplate {
+        common {
+            group("nonJvm") {
+                withWasmJs()
+                withNative()
+            }
+        }
+    }
+
     sourceSets {
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
         jvmTest.dependencies {
             // SemanticsTest exercises the KVStore handler from the accounting example.
             implementation(project(":examples"))

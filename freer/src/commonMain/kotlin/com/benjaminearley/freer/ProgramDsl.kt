@@ -159,7 +159,7 @@ internal fun checkResponse(
 
 @PublishedApi
 internal fun programResponseError(effect: Any): Nothing {
-    val name = effect::class.simpleName ?: effect::class.java.name
+    val name = effect::class.simpleName ?: "effect"
     throw IllegalStateException(
         "Rule for $name returned a Program instead of a response. Missing .bind()? " +
             "handle, intercept and handleS responses are plain values; use interpret to return a program.",
