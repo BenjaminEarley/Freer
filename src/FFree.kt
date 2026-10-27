@@ -97,10 +97,18 @@ fun <A> Program<A>.run(): Result<A> =
 // suspension more than once re-pays the rotation per shot; the bound is
 // amortized O(1) per shot, not shared across shots.
 internal sealed class Pipeline<in Input, out Output> {
-    // A single function step
-    class Step<Input, Output>(
-        val fn: (Input) -> Program<Output>,
-    ) : Pipeline<Input, Output>()
+    // A single step: one function from the input to the next program. A step that
+    // needs per-step state keeps it in fields, so it costs a single object.
+    abstract class Step<in Input, out Output> : Pipeline<Input, Output>() {
+        abstract fun run(input: Input): Program<Output>
+    }
+
+    // A step backed by a function value
+    class FnStep<Input, Output>(
+        private val fn: (Input) -> Program<Output>,
+    ) : Step<Input, Output>() {
+        override fun run(input: Input): Program<Output> = fn(input)
+    }
 
     // Concatenation of two pipelines
     class Join(
@@ -109,8 +117,8 @@ internal sealed class Pipeline<in Input, out Output> {
     ) : Pipeline<Erased, Erased>()
 
     // O(1) Append: Adds a step to the end of the pipeline
-    fun <NewOutput> then(fn: (Output) -> Program<NewOutput>): Pipeline<Input, NewOutput> {
-        val nextStep = Step(fn) as Pipeline<Erased, Erased>
+    fun <NewOutput> then(step: Step<Output, NewOutput>): Pipeline<Input, NewOutput> {
+        val nextStep = step as Pipeline<Erased, Erased>
         val current = this as Pipeline<Erased, Erased>
         return Join(current, nextStep) as Pipeline<Input, NewOutput>
     }
@@ -190,7 +198,15 @@ internal fun <A> Program<A>.force(): Program<A> {
             is Program.Suspended<*, *> -> {
                 val suspended = c as Program.Suspended<Erased, Erased>
                 val p = pending ?: return c as Program<A>
-                return Program.Suspended(suspended.effect, Pipeline.Join(suspended.pipeline, p)) as Program<A>
+                // A bare perform's identity step adds nothing in front of the queued
+                // binds (id-then-p = p), so they take its place.
+                val pipeline =
+                    if (suspended.pipeline === IDENTITY_STEP) {
+                        p
+                    } else {
+                        Pipeline.Join(suspended.pipeline, p)
+                    }
+                return Program.Suspended(suspended.effect, pipeline) as Program<A>
             }
 
             is Program.Bounce -> trampolineMisuse()
@@ -231,54 +247,35 @@ internal fun trampolineMisuse(): Nothing =
  * deferred program it is queued and runs during interpretation.
  */
 fun <A, B> Program<A>.flatMap(f: (A) -> Program<B>): Program<B> =
-    when (this) {
-        is Program.Done -> {
-            f(this.value)
-        }
-
-        is Program.Suspended<*, *> -> {
-            val suspended = this as Program.Suspended<Erased, A>
-            // Binding on a fresh perform: replace the identity step with f directly
-            // (id-then-f = f) instead of allocating Join(IDENTITY_STEP, Step(f)).
-            val pipeline =
-                if (suspended.pipeline === IDENTITY_STEP) {
-                    Pipeline.Step(f as (Erased) -> Program<B>)
-                } else {
-                    suspended.pipeline.then(f)
-                }
-            Program.Suspended(suspended.effect, pipeline)
-        }
-
-        is Program.Defer -> {
-            val bind = f as (Erased) -> Program<Erased>
-            Program.Defer(pending?.then(bind) ?: Pipeline.Step(bind), thunk)
-        }
-
-        is Program.Bounce -> {
-            trampolineMisuse()
-        }
-    }
+    if (this is Program.Done) f(this.value) else then(Pipeline.FnStep(f))
 
 fun <A, B> Program<A>.map(f: (A) -> B): Program<B> =
+    if (this is Program.Done) Program.Done(f(this.value)) else then(Pipeline.FnStep { Program.Done(f(it)) })
+
+// Queue [step] behind this program: a Done value runs it at once; a suspended or
+// deferred program appends it to its pipeline without forcing.
+internal fun <A, B> Program<A>.then(step: Pipeline.Step<A, B>): Program<B> =
     when (this) {
         is Program.Done -> {
-            Program.Done(f(this.value))
+            step.run(this.value)
         }
 
         is Program.Suspended<*, *> -> {
             val suspended = this as Program.Suspended<Erased, A>
+            // Binding on a fresh perform: replace the identity step with the new step
+            // directly (id-then-f = f) instead of allocating Join(IDENTITY_STEP, step).
             val pipeline =
                 if (suspended.pipeline === IDENTITY_STEP) {
-                    Pipeline.Step<Erased, B> { Program.Done(f(it as A)) }
+                    step as Pipeline<Erased, B>
                 } else {
-                    suspended.pipeline.then { Program.Done(f(it)) }
+                    suspended.pipeline.then(step)
                 }
             Program.Suspended(suspended.effect, pipeline)
         }
 
         is Program.Defer -> {
-            val bind = { value: Erased -> Program.Done(f(value as A)) }
-            Program.Defer(pending?.then(bind) ?: Pipeline.Step(bind), thunk)
+            val next = step as Pipeline.Step<Erased, Erased>
+            Program.Defer(pending?.then(next) ?: next, thunk)
         }
 
         is Program.Bounce -> {
@@ -287,7 +284,7 @@ fun <A, B> Program<A>.map(f: (A) -> B): Program<B> =
     }
 
 private val IDENTITY_STEP =
-    Pipeline.Step<Erased, Erased> {
+    Pipeline.FnStep<Erased, Erased> {
         if (it == Unit) Program.DONE_UNIT else Program.Done(it)
     }
 
@@ -302,7 +299,7 @@ internal tailrec fun <A, B> resume(
 ): Program<B> =
     when (pipeline) {
         is Pipeline.Step -> {
-            pipeline.fn(input)
+            pipeline.run(input)
         }
 
         is Pipeline.Join -> {
@@ -313,7 +310,7 @@ internal tailrec fun <A, B> resume(
                 // Left is a single step: Run it.
                 val leftStep = left as Pipeline.Step<A, Erased>
 
-                when (val result = leftStep.fn(input)) {
+                when (val result = leftStep.run(input)) {
                     is Program.Done -> {
                         // Step finished cleanly: Feed result into the Right side
                         resume(right as Pipeline<Erased, B>, result.value)
@@ -342,7 +339,14 @@ internal tailrec fun <A, B> resume(
                         // for non-tail-recursive programs; a Join keeps the unwind iterative
                         // via the rotation above.
                         val suspended = result as Program.Suspended<Erased, Erased>
-                        val newQueue = Pipeline.Join(suspended.pipeline, right)
+                        // A bare perform's identity step adds nothing in front of the
+                        // Right side (id-then-right = right), so Right takes its place.
+                        val newQueue =
+                            if (suspended.pipeline === IDENTITY_STEP) {
+                                right
+                            } else {
+                                Pipeline.Join(suspended.pipeline, right)
+                            }
                         Program.Suspended(suspended.effect, newQueue) as Program<B>
                     }
                 }
@@ -426,16 +430,25 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
                     return result
                 } else {
                     // NO MATCH: Relay the effect.
-                    // We construct a new step that waits for the result, then recurses.
-                    val forwardedPipeline =
-                        Pipeline.Step { response: Erased ->
-                            interpreterLoop(resume(pipeline, response), targetClass, transformDone, rule)
-                        }
-                    return Program.Suspended(effect, forwardedPipeline)
+                    // The continuation waits for the response, then re-enters this loop.
+                    return Program.Suspended(effect, RelayStep(pipeline, targetClass, transformDone, rule))
                 }
             }
         }
     }
+}
+
+// The continuation of an effect interpreterLoop relays past: feeds the response to
+// the inner pipeline and re-enters the loop. One object per relayed effect, holding
+// the loop's parameters as fields rather than as a closure wrapped in a step.
+private class RelayStep<Target : Effect<*>, A, B>(
+    private val pipeline: Pipeline<Erased, A>,
+    private val targetClass: Class<Target>,
+    private val transformDone: (A) -> Program<B>,
+    private val rule: (Target, (Erased) -> Program<B>) -> Program<B>,
+) : Pipeline.Step<Erased, B>() {
+    override fun run(input: Erased): Program<B> =
+        interpreterLoop(resume(pipeline, input), targetClass, transformDone, rule)
 }
 
 // The continuation interpreterLoop hands to a rule: one object per matched effect,
@@ -519,16 +532,24 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                     // and each shot must re-enter with the state as it was here. This
                     // capture is what makes per-branch (backtracking) state work when a
                     // stateful handler sits inside a multi-shot one.
-                    val s = state
-                    val forwardedPipeline =
-                        Pipeline.Step { response: Erased ->
-                            interpreterLoopS(resume(pipeline, response), s, targetClass, transformDone, rule)
-                        }
-                    return Program.Suspended(effect, forwardedPipeline)
+                    return Program.Suspended(effect, RelayStepS(pipeline, state, targetClass, transformDone, rule))
                 }
             }
         }
     }
+}
+
+// The continuation of an effect interpreterLoopS relays past: RelayStep plus the
+// state captured at the relay, which every re-entry starts from.
+private class RelayStepS<Target : Effect<*>, S, A, B>(
+    private val pipeline: Pipeline<Erased, A>,
+    private val state: S,
+    private val targetClass: Class<Target>,
+    private val transformDone: (S, A) -> Program<B>,
+    private val rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
+) : Pipeline.Step<Erased, B>() {
+    override fun run(input: Erased): Program<B> =
+        interpreterLoopS(resume(pipeline, input), state, targetClass, transformDone, rule)
 }
 
 // The continuation interpreterLoopS hands to a rule: Resumer plus the state a
