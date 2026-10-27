@@ -719,6 +719,35 @@ suspend fun main() {
         }
     }
 
+    semTest("handle rule that suspends and then returns a Program throws") {
+        expectMissingBind {
+            perform(AskInt)
+                .handle<Ask<*>, Int> {
+                    performIO { 1 }.bind()
+                    Program.Done(5)
+                }.ioBlocking()
+        }
+    }
+
+    semTest("handleS rule returning a Program response without suspending throws") {
+        expectMissingBind {
+            perform(AskInt)
+                .handleS<Ask<*>, Int, Int>(0) { s, _ -> s to Program.Done(5) }
+                .runOrThrow()
+        }
+    }
+
+    semTest("intercept rule that suspends and then returns a Program throws") {
+        expectMissingBind {
+            perform(AskInt)
+                .intercept<Ask<*>, Int> { op, _ ->
+                    performIO { 1 }.bind()
+                    perform(op)
+                }.handle<Ask<*>, Int> { 1 }
+                .ioBlocking()
+        }
+    }
+
     semTest("handler calling a shadowing print effect constructor instead of kotlin.io.print throws") {
         fun print(msg: String) = perform(Say(msg))
 

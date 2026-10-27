@@ -78,7 +78,10 @@ fun <A> orElse(
  * Split the search: null if it has no answers, otherwise the first answer paired
  * with the rest of the search as a replayable program. The rest is built in O(1):
  * the first answer's own rest, then one choice over the options not yet tried —
- * each of those is resumed only if the rest is run and reaches it.
+ * each of those is resumed only if the rest is run and reaches it. Splitting a
+ * rest again nests one more msplit interpreter around the search, so enumerating
+ * by repeated splits costs stack and time proportional to the number of prior
+ * splits — a bound set by handler nesting, not by the number of options.
  */
 fun <A> Program<A>.msplit(): Program<Pair<A, Program<A>>?> =
     interpret<NonDet<*>, A, Pair<A, Program<A>>?>(
