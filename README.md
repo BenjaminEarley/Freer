@@ -18,15 +18,14 @@ A `suspend` function with injected dependencies gives you the first two. The res
 
 Running main.kt:
 ```sh
-kotlinc -include-runtime -d /tmp/ffree.jar $(find src -name '*.kt') && java -jar /tmp/ffree.jar
+./gradlew :examples:run
 ```
 
 Running the tests and the benchmark:
 ```sh
-kotlinc -include-runtime -d /tmp/ffree-tests.jar $(find src test -name '*.kt')
-java -cp /tmp/ffree-tests.jar TrampolineTestKt
-java -cp /tmp/ffree-tests.jar SemanticsTestKt
-java -cp /tmp/ffree-tests.jar BenchmarkKt
+./gradlew :freer:runTrampolineTest
+./gradlew :freer:runSemanticsTest
+./gradlew :freer:runBenchmark
 ```
 
 ## Quick Example
@@ -34,7 +33,7 @@ java -cp /tmp/ffree-tests.jar BenchmarkKt
 ### 1. Define an effect
 
 ```kotlin
-import ffree.*
+import com.benjaminearley.freer.*
 
 sealed interface Console<out R> : Effect<R>
 data class Print(val msg: String) : Console<Unit>
@@ -110,8 +109,8 @@ Handler responses are not type-checked against the effect's declared response ty
 Handlers that need real I/O emit `IO` effects via `performIO { }`. A single `suspend` interpreter at the edge handles them all:
 
 ```kotlin
-import ffree.effects.io
-import ffree.effects.performIO
+import com.benjaminearley.freer.effects.io
+import com.benjaminearley.freer.effects.performIO
 
 fun <A> Program<A>.runConsoleAsync(): Program<A> =
     handle<Console<*>, A> { op ->

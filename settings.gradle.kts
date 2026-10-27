@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "freer"
+include(":freer", ":examples")
