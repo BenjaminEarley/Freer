@@ -82,6 +82,8 @@ kotlin {
     jvm {
         compilerOptions {
             jvmTarget = JvmTarget.JVM_11
+            // Check calls against the JDK 11 API even though the build runs on the 17 toolchain.
+            freeCompilerArgs.add("-Xjdk-release=11")
         }
     }
 
@@ -112,14 +114,17 @@ kotlin {
     }
 }
 
-// Runs the JVM benchmark harness, a main() in jvmTest.
-listOf(
-    "runBenchmark" to "com.benjaminearley.freer.BenchmarkKt",
-).forEach { (taskName, harness) ->
-    tasks.register<JavaExec>(taskName) {
-        group = "verification"
-        val testCompilation = kotlin.jvm().compilations["test"]
-        classpath = testCompilation.output.allOutputs + testCompilation.runtimeDependencyFiles!!
-        mainClass = harness
+// Lets JPMS consumers require the JVM jar under a stable module name.
+tasks.named<Jar>("jvmJar") {
+    manifest {
+        attributes("Automatic-Module-Name" to "com.benjaminearley.freer")
     }
+}
+
+// Runs the JVM benchmark harness, a main() in jvmTest.
+tasks.register<JavaExec>("runBenchmark") {
+    group = "verification"
+    val testCompilation = kotlin.jvm().compilations["test"]
+    classpath = testCompilation.output.allOutputs + testCompilation.runtimeDependencyFiles!!
+    mainClass = "com.benjaminearley.freer.BenchmarkKt"
 }
