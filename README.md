@@ -60,7 +60,7 @@ fun <A> Program<A>.console(): Program<A> =
     }
 ```
 
-The `handle` DSL auto-resumes with the block's return value. For effects that return `Unit` (like `Print`), just do the work. For effects that return a value (like `ReadLine`), return it. Note the qualified `kotlin.io.print`: the effect constructor `print` from step 1 shadows it, and calling *that* here would build a `Program` that is silently discarded instead of printing.
+The `handle` DSL auto-resumes with the block's return value. For effects that return `Unit` (like `Print`), just do the work. For effects that return a value (like `ReadLine`), return it. Note the qualified `kotlin.io.print`: the effect constructor `print` from step 1 shadows it, and calling *that* here would make the rule return a `Program` instead of printing. That mistake fails fast: the handler throws an `IllegalStateException` naming the effect (`Print`) and pointing at the missing `.bind()`.
 
 ### 4. Run it
 
@@ -91,7 +91,7 @@ Handlers dispatch on the erased effect class: `handle<Get<String>, A>` also matc
 
 The low-level `interpret` hands the rule a `resume` continuation with a contract: called directly (inside the rule), it must be called at most once and its result returned unchanged — the interpreter trampolines it for stack safety and throws on misuse. To transform or combine results, call `resume` from a genuinely deferred context (e.g. bind it inside a `program { }` block — `flatMap` on an already-`Done` program still runs eagerly), or just use `handle`/`intercept`.
 
-Handler responses are unchecked at runtime: nothing ties a rule's return value to the effect's declared response type `R`, so a wrong response surfaces later as a `ClassCastException` at the value's use site, not at the handler. Watch for rules whose last expression isn't the intended response — e.g. a collection mutator returning `Boolean` from a rule for a `Unit` effect.
+Handler responses are not type-checked against the effect's declared response type `R`: nothing ties a rule's return value to `R`, so a wrong response surfaces later as a `ClassCastException` at the value's use site, not at the handler. The one exception is a `Program`-valued response from `handle`, `intercept` or `handleS` — usually a sub-program missing its `.bind()` — which is rejected immediately with an `IllegalStateException` naming the effect and pointing at the missing `.bind()`; use `interpret` when a rule genuinely needs to return a program. Watch for rules whose last expression isn't the intended response — e.g. a collection mutator returning `Boolean` from a rule for a `Unit` effect.
 
 ## Async I/O
 

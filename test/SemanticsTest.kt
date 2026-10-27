@@ -8,6 +8,7 @@ import ffree.Erased
 import ffree.Program
 import ffree.flatMap
 import ffree.handle
+import ffree.handleS
 import ffree.intercept
 import ffree.interpret
 import ffree.interpretS
@@ -51,6 +52,12 @@ import kotlin.coroutines.suspendCoroutine
 sealed interface Ask<out R> : Effect<R>
 
 data object AskInt : Ask<Int>
+
+sealed interface Out<out R> : Effect<R>
+
+data class Say(
+    val s: String,
+) : Out<Unit>
 
 suspend fun main() {
     println("=== Semantics Tests ===")
@@ -679,8 +686,65 @@ suspend fun main() {
         check(result == listOf(1, 2, 3)) { "got $result" }
     }
 
+    semTest("handle rule returning an unbound performIO throws instead of dropping the IO") {
+        var ran = false
+        expectMissingBind {
+            program { perform(Say("hi")).bind() }
+                .handle<Out<*>, Unit> { op ->
+                    when (op) {
+                        is Say -> performIO { ran = true }
+                    }
+                }.ioBlocking()
+        }
+        check(!ran) { "the unbound IO ran" }
+    }
+
+    semTest("intercept rule returning perform(op) instead of proceed() throws") {
+        expectMissingBind {
+            perform(AskInt)
+                .intercept<Ask<*>, Int> { op, _ -> perform(op) }
+                .handle<Ask<*>, Int> { 1 }
+                .runOrThrow()
+        }
+    }
+
+    semTest("handleS rule whose response element is a Program throws") {
+        expectMissingBind {
+            perform(AskInt)
+                .handleS<Ask<*>, Int, Int>(0) { s, _ ->
+                    val step = performIO { 1 }.bind()
+                    (s + step) to Program.Done(5)
+                }.ioBlocking()
+        }
+    }
+
+    semTest("handler calling a shadowing print effect constructor instead of kotlin.io.print throws") {
+        fun print(msg: String) = perform(Say(msg))
+
+        expectMissingBind {
+            program { print("hi").bind() }
+                .handle<Out<*>, Unit> { op ->
+                    when (op) {
+                        is Say -> print(op.s)
+                    }
+                }.runOrThrow()
+        }
+    }
+
     println()
     println("All semantics tests passed.")
+}
+
+private fun expectMissingBind(block: () -> Any?) {
+    try {
+        block()
+    } catch (e: IllegalStateException) {
+        check(e.message?.contains(".bind()") == true) {
+            "Expected a missing-.bind() IllegalStateException, got: ${e.message}"
+        }
+        return
+    }
+    error("Expected an IllegalStateException, but nothing was thrown")
 }
 
 private fun expectContractViolation(block: () -> Any?) {

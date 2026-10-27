@@ -108,12 +108,33 @@ internal fun <A> runRuleBlock(block: suspend ProgramScope.() -> A): Program<A> {
     return scope.buildProgram<A>().force()
 }
 
+// Rule responses for handle, intercept and handleS are plain values. A Program response
+// almost always means a sub-program was returned without .bind(), which would otherwise
+// drop its effects silently (Unit effects) or fail later at the use site (value effects).
+@PublishedApi
+internal fun checkResponse(
+    effect: Any,
+    response: Any?,
+): Any? {
+    if (response is Program<*>) programResponseError(effect)
+    return response
+}
+
+@PublishedApi
+internal fun programResponseError(effect: Any): Nothing {
+    val name = effect::class.simpleName ?: effect::class.java.name
+    throw IllegalStateException(
+        "Rule for $name returned a Program instead of a response. Missing .bind()? " +
+            "handle, intercept and handleS responses are plain values; use interpret to return a program.",
+    )
+}
+
 /** Interpret with auto-resume: the block's return value is the effect's response. */
 inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
     interpret<E, A> { op, resume ->
         when (val result = runRuleBlock { rule(op) }) {
-            is Program.Done -> resume(result.value)
-            is Program.Suspended<*, *> -> result.flatMap { response -> resume(response) }
+            is Program.Done -> resume(checkResponse(op, result.value))
+            is Program.Suspended<*, *> -> result.flatMap { response -> resume(checkResponse(op, response)) }
             else -> error("unreachable: force() leaves only Done or Suspended")
         }
     }
@@ -129,8 +150,8 @@ inline fun <reified E : Effect<*>, A> Program<A>.intercept(
     interpret<E, A> { op, resume ->
         val proceed: suspend ProgramScope.() -> Any? = { perform(op).bind() }
         when (val result = runRuleBlock { rule(op, proceed) }) {
-            is Program.Done -> resume(result.value)
-            is Program.Suspended<*, *> -> result.flatMap { response -> resume(response) }
+            is Program.Done -> resume(checkResponse(op, result.value))
+            is Program.Suspended<*, *> -> result.flatMap { response -> resume(checkResponse(op, response)) }
             else -> error("unreachable: force() leaves only Done or Suspended")
         }
     }
@@ -148,11 +169,11 @@ inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
         when (val result = runRuleBlock { rule(s, op) }) {
             is Program.Done -> {
                 val (newState, response) = result.value
-                resume(newState, response)
+                resume(newState, checkResponse(op, response))
             }
 
             is Program.Suspended<*, *> -> {
-                result.flatMap { (newState, response) -> resume(newState, response) }
+                result.flatMap { (newState, response) -> resume(newState, checkResponse(op, response)) }
             }
 
             else -> error("unreachable: force() leaves only Done or Suspended")
