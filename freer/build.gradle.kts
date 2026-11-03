@@ -107,6 +107,14 @@ kotlin {
     sourceSets {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            // Property-based tests: kotest's generators and shrinking, driven by runTest since
+            // checkAll suspends. Both ship wasmJs and every native target this library builds.
+            implementation(libs.kotest.property)
+            implementation(libs.kotlinx.coroutines.test)
+        }
+        // kotest brings an older kotlin-reflect; the JVM test runtime needs the one matching the compiler.
+        jvmTest.dependencies {
+            implementation(kotlin("reflect"))
         }
     }
 }
