@@ -1,0 +1,185 @@
+public final class com/benjaminearley/freer/trace/Answer {
+	public fun <init> (Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;)V
+	public final fun component1 ()Lcom/benjaminearley/freer/Effect;
+	public final fun component2 ()Ljava/lang/Object;
+	public final fun copy (Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;)Lcom/benjaminearley/freer/trace/Answer;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Answer;Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Answer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public final fun getResponse ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Branch {
+	public fun <init> (Ljava/lang/Object;Lcom/benjaminearley/freer/trace/Tree;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun component2 ()Lcom/benjaminearley/freer/trace/Tree;
+	public final fun copy (Ljava/lang/Object;Lcom/benjaminearley/freer/trace/Tree;)Lcom/benjaminearley/freer/trace/Branch;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Branch;Ljava/lang/Object;Lcom/benjaminearley/freer/trace/Tree;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Branch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getResponse ()Ljava/lang/Object;
+	public final fun getSubtree ()Lcom/benjaminearley/freer/trace/Tree;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Call {
+	public final fun getAnswered ()Z
+	public final fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public final fun getFrom ()Ljava/lang/String;
+	public final fun getInner ()Ljava/util/List;
+	public final fun getRelayed ()Z
+	public final fun getResponse ()Ljava/lang/Object;
+	public final fun getTo ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Described : com/benjaminearley/freer/Effect {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClassName ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Path {
+	public fun <init> (Ljava/util/List;Lcom/benjaminearley/freer/trace/Tree$Leaf;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Lcom/benjaminearley/freer/trace/Tree$Leaf;
+	public final fun copy (Ljava/util/List;Lcom/benjaminearley/freer/trace/Tree$Leaf;)Lcom/benjaminearley/freer/trace/Path;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Path;Ljava/util/List;Lcom/benjaminearley/freer/trace/Tree$Leaf;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Path;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnswers ()Ljava/util/List;
+	public final fun getEnd ()Lcom/benjaminearley/freer/trace/Tree$Leaf;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/ReplayKt {
+	public static final fun replay (Lcom/benjaminearley/freer/Program;Lcom/benjaminearley/freer/trace/Path;)Lcom/benjaminearley/freer/Program;
+	public static final fun replay (Lcom/benjaminearley/freer/Program;Lcom/benjaminearley/freer/trace/Trace;)Lcom/benjaminearley/freer/Program;
+}
+
+public final class com/benjaminearley/freer/trace/Representatives {
+	public final fun ofEffect (Lkotlin/jvm/functions/Function1;)V
+	public final fun ofEffect (Lkotlin/reflect/KClass;Ljava/util/List;)V
+	public final fun ofType (Lkotlin/reflect/KClass;Ljava/util/List;)V
+}
+
+public final class com/benjaminearley/freer/trace/ResponsesKt {
+	public static final fun describe (Ljava/lang/Object;)Ljava/lang/String;
+	public static final fun responses (Lcom/benjaminearley/freer/Effect;)Ljava/util/List;
+}
+
+public final class com/benjaminearley/freer/trace/TextKt {
+	public static final fun parse (Lcom/benjaminearley/freer/trace/Trace$Companion;Ljava/lang/String;)Lcom/benjaminearley/freer/trace/Trace;
+	public static final fun toText (Lcom/benjaminearley/freer/trace/Trace;)Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Trace {
+	public static final field Companion Lcom/benjaminearley/freer/trace/Trace$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun calls ()Ljava/util/List;
+	public final fun getLast ()Ljava/lang/String;
+	public final fun getLayers ()Ljava/util/List;
+	public final fun getParticipants ()Ljava/util/List;
+	public final fun getWires ()Ljava/util/List;
+}
+
+public final class com/benjaminearley/freer/trace/Trace$Companion {
+}
+
+public final class com/benjaminearley/freer/trace/TraceKt {
+	public static final fun observed (Lcom/benjaminearley/freer/Program;Ljava/lang/String;Lcom/benjaminearley/freer/trace/Trace;)Lcom/benjaminearley/freer/Program;
+}
+
+public abstract interface class com/benjaminearley/freer/trace/Tree {
+}
+
+public abstract interface class com/benjaminearley/freer/trace/Tree$Leaf : com/benjaminearley/freer/trace/Tree {
+}
+
+public final class com/benjaminearley/freer/trace/Tree$Returns : com/benjaminearley/freer/trace/Tree$Leaf {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Lcom/benjaminearley/freer/trace/Tree$Returns;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Tree$Returns;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Tree$Returns;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Tree$Step : com/benjaminearley/freer/trace/Tree {
+	public fun <init> (Lcom/benjaminearley/freer/Effect;Ljava/util/List;)V
+	public final fun component1 ()Lcom/benjaminearley/freer/Effect;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Lcom/benjaminearley/freer/Effect;Ljava/util/List;)Lcom/benjaminearley/freer/trace/Tree$Step;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Tree$Step;Lcom/benjaminearley/freer/Effect;Ljava/util/List;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Tree$Step;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBranches ()Ljava/util/List;
+	public final fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Tree$Stops : com/benjaminearley/freer/trace/Tree$Leaf {
+	public fun <init> (Lcom/benjaminearley/freer/Effect;)V
+	public final fun component1 ()Lcom/benjaminearley/freer/Effect;
+	public final fun copy (Lcom/benjaminearley/freer/Effect;)Lcom/benjaminearley/freer/trace/Tree$Stops;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Tree$Stops;Lcom/benjaminearley/freer/Effect;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Tree$Stops;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/TreeKt {
+	public static final fun outcome (Lcom/benjaminearley/freer/trace/Tree$Leaf;)Ljava/lang/String;
+	public static final fun paths (Lcom/benjaminearley/freer/trace/Tree;)Ljava/util/List;
+	public static final fun redundantResponses (Lcom/benjaminearley/freer/trace/Tree;)Ljava/util/List;
+	public static final fun tree (Lcom/benjaminearley/freer/Program;Lkotlin/jvm/functions/Function1;)Lcom/benjaminearley/freer/trace/Tree;
+	public static synthetic fun tree$default (Lcom/benjaminearley/freer/Program;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Tree;
+}
+
+public abstract interface class com/benjaminearley/freer/trace/Wire {
+	public abstract fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public abstract fun getLayer ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Wire$Down : com/benjaminearley/freer/trace/Wire {
+	public fun <init> (Ljava/lang/String;Lcom/benjaminearley/freer/Effect;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lcom/benjaminearley/freer/Effect;
+	public final fun copy (Ljava/lang/String;Lcom/benjaminearley/freer/Effect;)Lcom/benjaminearley/freer/trace/Wire$Down;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Wire$Down;Ljava/lang/String;Lcom/benjaminearley/freer/Effect;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Wire$Down;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public fun getLayer ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/Wire$Up : com/benjaminearley/freer/trace/Wire {
+	public fun <init> (Ljava/lang/String;Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lcom/benjaminearley/freer/Effect;
+	public final fun component3 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/String;Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;)Lcom/benjaminearley/freer/trace/Wire$Up;
+	public static synthetic fun copy$default (Lcom/benjaminearley/freer/trace/Wire$Up;Ljava/lang/String;Lcom/benjaminearley/freer/Effect;Ljava/lang/Object;ILjava/lang/Object;)Lcom/benjaminearley/freer/trace/Wire$Up;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getEffect ()Lcom/benjaminearley/freer/Effect;
+	public fun getLayer ()Ljava/lang/String;
+	public final fun getResponse ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/benjaminearley/freer/trace/mermaid/MermaidKt {
+	public static final fun flowchart (Lcom/benjaminearley/freer/trace/Tree;)Ljava/lang/String;
+	public static final fun mermaidLabel (Ljava/lang/Object;)Ljava/lang/String;
+	public static final fun sequenceDiagram (Lcom/benjaminearley/freer/trace/Trace;)Ljava/lang/String;
+}
+

@@ -9,6 +9,8 @@ kotlin {
 
 dependencies {
     implementation(project(":freer"))
+    implementation(project(":freer-trace"))
+    testImplementation(libs.kotlin.test)
 }
 
 application {
@@ -67,4 +69,47 @@ tasks.register<JavaExec>("runReadme") {
 
 tasks.named("check") {
     dependsOn("runReadme")
+}
+
+// README.md of this module shows the diagrams of the diagrams scenario, which GitHub renders.
+// The page is generated so that it cannot drift from the code: `diagrams` writes it under
+// build/, `checkDiagrams` compares that with the committed page as part of `check`, and
+// `updateDiagrams` copies it over after a change.
+val diagrams =
+    tasks.register<JavaExec>("diagrams") {
+        description = "Generates the diagrams page under build/"
+        val page = layout.buildDirectory.file("generated/diagrams/README.md")
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass = "com.benjaminearley.freer.examples.DiagramsKt"
+        outputs.file(page)
+        args(page.get().asFile.path)
+    }
+
+val updateDiagrams =
+    tasks.register("updateDiagrams") {
+        description = "Regenerates README.md from the diagrams scenario"
+        val generated = diagrams.map { it.outputs.files.singleFile }
+        val committed = layout.projectDirectory.file("README.md")
+        inputs.file(generated)
+        outputs.file(committed)
+        doLast { generated.get().copyTo(committed.asFile, overwrite = true) }
+    }
+
+tasks.register("checkDiagrams") {
+    group = "verification"
+    description = "Checks that README.md is the generated diagrams page"
+    mustRunAfter(updateDiagrams)
+    val generated = diagrams.map { it.outputs.files.singleFile }
+    val committed = layout.projectDirectory.file("README.md")
+    inputs.file(generated)
+    inputs.file(committed)
+    doLast {
+        check(generated.get().readText() == committed.asFile.readText()) {
+            "examples/README.md is stale: run ./gradlew :examples:updateDiagrams and commit it"
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("checkDiagrams")
 }

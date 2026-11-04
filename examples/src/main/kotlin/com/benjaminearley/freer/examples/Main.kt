@@ -29,4 +29,7 @@ fun main() {
 
     println("\n--- Scenario 9: Committed Choice (once / soft cut) ---")
     committedChoiceExample()
+
+    println("\n--- Scenario 10: Mermaid Diagrams (one run, every path) ---")
+    diagramsExample()
 }

@@ -40,12 +40,21 @@ jobs:
         timeout-minutes: 45
         run: ./gradlew check :examples:run
 
+      # The diagrams page, and every diagram the freer-trace tests generated, through
+      # Mermaid's own parser. The runner's Node runs it; the packages go outside the checkout.
+      - name: Parse the diagrams with Mermaid
+        timeout-minutes: 5
+        run: |
+          npm install --silent --no-audit --no-fund --prefix "$RUNNER_TEMP/mermaid" mermaid@11 jsdom@29
+          cp .github/scripts/parse-mermaid.mjs "$RUNNER_TEMP/mermaid/"
+          node "$RUNNER_TEMP/mermaid/parse-mermaid.mjs" examples/README.md freer-trace/build/diagrams/from-tests.md
+
       # Fails below the mutation score threshold set in freer/build.gradle.kts.
       - name: Mutation-test the JVM classes
         timeout-minutes: 15
         run: ./gradlew :freer:pitest
 
-  # The API reference: the KDoc of main, rendered by Dokka and published to GitHub Pages.
+  # The API reference: the KDoc of both published modules, rendered by Dokka and published to GitHub Pages.
   # The README links to it, so the README job below waits for this one.
   pages:
     name: API reference (Dokka to GitHub Pages)
@@ -77,9 +86,9 @@ jobs:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
 
-      - name: Render the KDoc
+      - name: Render the KDoc of both modules
         timeout-minutes: 20
-        run: ./gradlew :freer:dokkaGenerate
+        run: ./gradlew :dokkaGenerate
 
       # Enables Pages with the Actions build type on first use, if the token is allowed to.
       - uses: actions/configure-pages@v6
@@ -88,7 +97,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: freer/build/dokka/html
+          path: build/dokka/html
 
       - id: deploy
         uses: actions/deploy-pages@v5
@@ -106,14 +115,16 @@ jobs:
 
       - uses: DavidAnson/markdownlint-cli2-action@v25
         with:
-          globs: README.md
+          globs: |
+            README.md
+            examples/README.md
 
       # The ACM Digital Library, behind doi.org, answers link checkers with 403.
       - uses: lycheeverse/lychee-action@v2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          args: --no-progress --exclude doi.org README.md
+          args: --no-progress --exclude doi.org README.md examples/README.md
 
   macos:
     name: macOS (macOS and iOS simulator tests, all Apple targets)

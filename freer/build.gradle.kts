@@ -316,3 +316,19 @@ tasks.register("checkReadmeIdentifiers") {
 tasks.named("check") {
     dependsOn("checkReadmeIdentifiers")
 }
+
+// The JVM test classes, for the freer-trace module's tests: they check its path explorer
+// against the specification interpreter in reference/ on the random programs of laws/, both of
+// which live here with the tests that use them.
+val jvmTestJar =
+    tasks.register<Jar>("jvmTestJar") {
+        description = "Packs the JVM test classes for the freer-trace module's tests"
+        archiveClassifier = "jvm-tests"
+        from(kotlin.jvm().compilations.getByName("test").output.allOutputs)
+    }
+
+configurations.consumable("jvmTestClasses")
+
+artifacts {
+    add("jvmTestClasses", jvmTestJar)
+}

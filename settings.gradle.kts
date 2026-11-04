@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "freer"
-include(":freer", ":examples", ":jcstress")
+include(":freer", ":freer-trace", ":examples", ":jcstress")
