@@ -8,7 +8,7 @@ API reference (KDoc): [benjaminearley.github.io/Freer](https://benjaminearley.gi
 
 ## Installation
 
-Add `implementation("com.benjaminearley:freer:0.2.0")` to a common source set or any JVM module. Targets: JVM, Wasm, macOS, iOS, Linux and Windows. Everything is common code except `ioBlocking()`, which is JVM-only.
+Add `implementation("com.benjaminearley:freer:0.2.1")` to a common source set or any JVM module. Targets: JVM, Wasm, macOS, iOS, Linux and Windows. Everything is common code except `ioBlocking()`, which is JVM-only.
 
 ## Quick Example
 
