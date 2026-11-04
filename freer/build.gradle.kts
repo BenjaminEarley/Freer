@@ -184,9 +184,8 @@ afterEvaluate {
 // the main output of the JVM target; the tests are the JVM test classes, which kotlin-test
 // runs under JUnit 4 on the JVM. toString, hashCode and equals are left alone: nothing but
 // a debug string depends on them, so a mutant there would only ever be junk. The run fails
-// below the score threshold; docs/mutation-testing.md classifies the mutants that survive
-// and explains the number. -PpitestMutators=ALL runs the full set, -PpitestThreshold=N
-// overrides the bar.
+// below the score threshold; the README's Semantics section explains the number.
+// -PpitestMutators=ALL runs the full set, -PpitestThreshold=N overrides the bar.
 val pitest: Configuration by configurations.creating
 
 dependencies {
