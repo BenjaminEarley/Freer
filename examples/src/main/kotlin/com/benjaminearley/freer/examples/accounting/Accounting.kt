@@ -28,7 +28,7 @@ fun accountingExample() {
 
     println("""Initial Database State: $database""")
 
-    println("--- Scenario 1: Successful Transfer ---")
+    println("--- Scenario 1.1: Successful Transfer ---")
     val programSuccess = transferMoney("Alice", "Bob", 100.0)
 
     val result1: Result<String> =
@@ -45,7 +45,7 @@ fun accountingExample() {
     println("\n--- Database State After Tx 1 ---")
     println(database)
 
-    println("\n--- Scenario 2: Insufficient Funds ---")
+    println("\n--- Scenario 1.2: Insufficient Funds ---")
 
     val programFail = transferMoney("Bob", "Alice", 500.0)
 
@@ -60,7 +60,7 @@ fun accountingExample() {
             .runOrThrow()
 
     printResult(result2)
-    println("\n--- Scenario 3: Fraud Detection ---")
+    println("\n--- Scenario 1.3: Fraud Detection ---")
     val programFraud = transferMoney("Alice", "Bob", 6000.0)
 
     val result3 =
@@ -75,7 +75,7 @@ fun accountingExample() {
 
     printResult(result3)
 
-    println("\n--- Scenario 4: Async KVStore via IO Effect ---")
+    println("\n--- Scenario 1.4: Async KVStore via IO Effect ---")
     val asyncDatabase =
         mutableMapOf(
             "Alice" to 1000.0,
