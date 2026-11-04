@@ -146,10 +146,13 @@ public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
 // trip and no Program wrapper; one that suspends is built into a concrete
 // Done/Suspended program — program(block).force() without the intermediate Defer —
 // and [onValue] is queued behind it. Handler rules force immediately, so nothing
-// needs the laziness; program{} keeps it for users. The per-effect coroutine is
-// scalar-replaced by the JIT when the rule returns without suspending — its measured
-// cost is zero in that case, so there is deliberately no non-suspend fast-path
-// overload.
+// needs the laziness; program{} keeps it for users. When the rule returns without
+// suspending, the objects this costs per effect are the scope and a copy of the rule
+// lambda, and whether they are allocated at all is up to the JIT's escape analysis:
+// on JDK 21 both are eliminated and such a rule costs nothing over a direct resume,
+// on JDK 17 they are allocated, 72 bytes per effect, with the same inlining decisions
+// on both. There is deliberately no non-suspend fast-path overload: it would double
+// the API for a cost the newer JIT already removes.
 private inline fun <A, B> runRuleBlock(
     noinline block: suspend ProgramScope.() -> A,
     crossinline onValue: (A) -> Program<B>,

@@ -8,8 +8,15 @@ import org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation
 
 plugins {
     kotlin("multiplatform")
+    alias(libs.plugins.kotlin.allopen)
+    alias(libs.plugins.kotlinx.benchmark)
     alias(libs.plugins.maven.publish)
     signing
+}
+
+// JMH subclasses benchmark classes, so they must be open.
+allOpen {
+    annotation("org.openjdk.jmh.annotations.State")
 }
 
 // The group and version come from the root gradle.properties and become the Maven
@@ -82,6 +89,13 @@ kotlin {
             // Check calls against the JDK 11 API even though the build runs on the 17 toolchain.
             freeCompilerArgs.add("-Xjdk-release=11")
         }
+        // The JMH benchmarks, in freer/src/jvmBenchmark, see the library's internals like the tests do.
+        compilations.create("benchmark") {
+            associateWith(this@jvm.compilations.getByName("main"))
+            compileTaskProvider.configure {
+                compilerOptions.freeCompilerArgs.add("-Xexplicit-api=disable")
+            }
+        }
     }
 
     wasmJs {
@@ -116,6 +130,51 @@ kotlin {
         jvmTest.dependencies {
             implementation(kotlin("reflect"))
         }
+        getByName("jvmBenchmark").dependencies {
+            implementation(libs.kotlinx.benchmark.runtime)
+        }
+    }
+}
+
+// One forked JVM per benchmark, with the same warm-up and measurement as the annotations on
+// the benchmark classes, so that `./gradlew :freer:jvmBenchmark` and running the jar from
+// `jvmBenchmarkJar` by hand (for example with `-prof gc`) measure the same thing.
+benchmark {
+    configurations {
+        named("main") {
+            warmups = 5
+            iterations = 5
+            iterationTime = 1
+            iterationTimeUnit = "s"
+            mode = "avgt"
+            outputTimeUnit = "ns"
+            advanced("jvmForks", 1)
+        }
+        // A quick pass over every case, to check that they run rather than to measure them.
+        register("smoke") {
+            warmups = 1
+            iterations = 1
+            iterationTime = 200
+            iterationTimeUnit = "ms"
+            mode = "avgt"
+            outputTimeUnit = "ns"
+            advanced("jvmForks", 1)
+        }
+    }
+    targets {
+        register("jvmBenchmark")
+    }
+}
+
+// The plugin's jar task picks the class directories to pack through a provider that checks
+// whether they exist. Under the configuration cache that provider is evaluated when the
+// cache entry is stored, before a fresh build has compiled anything, so the stored jar task
+// leaves out the benchmark classes themselves. Running the task outside the configuration
+// cache evaluates the provider at execution, which keeps the jar self-contained, as running
+// it by hand with a profiler needs.
+afterEvaluate {
+    tasks.named("jvmBenchmarkBenchmarkJar") {
+        notCompatibleWithConfigurationCache("the benchmark plugin resolves the class directories when the cache entry is stored")
     }
 }
 
@@ -124,12 +183,4 @@ tasks.named<Jar>("jvmJar") {
     manifest {
         attributes("Automatic-Module-Name" to "com.benjaminearley.freer")
     }
-}
-
-// Runs the JVM benchmark harness, a main() in jvmTest.
-tasks.register<JavaExec>("runBenchmark") {
-    group = "verification"
-    val testCompilation = kotlin.jvm().compilations["test"]
-    classpath = testCompilation.output.allOutputs + testCompilation.runtimeDependencyFiles!!
-    mainClass = "com.benjaminearley.freer.BenchmarkKt"
 }
