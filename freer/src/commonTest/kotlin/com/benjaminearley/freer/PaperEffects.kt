@@ -27,6 +27,17 @@ fun <A> Program<A>.runWriter(): Program<Pair<A, List<String>>> =
         rule = { lines, op, resume -> resume(lines + op.line, Unit) },
     )
 
+/**
+ * The same log built on the way back: the rule runs the rest of the program and puts its
+ * line in front of the rest's log. Under nondeterminism each branch again gets its own log,
+ * since the rest is run once per branch and the line is added to each result.
+ */
+fun <A> Program<A>.runWriterAfterwards(): Program<Pair<A, List<String>>> =
+    interpret<Tell, A, Pair<A, List<String>>>(
+        transformDone = { value -> Program.Done(value to emptyList()) },
+        rule = { op, resume -> resume(Unit).map { (value, lines) -> value to listOf(op.line) + lines } },
+    )
+
 /** Abort with [error]; never answered, so the program does not continue past it. */
 data class Throw<out E>(
     val error: E,

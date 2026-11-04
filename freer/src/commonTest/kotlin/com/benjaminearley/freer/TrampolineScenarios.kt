@@ -197,9 +197,9 @@ val trampolineScenarios: List<TrampolineScenario> =
             }
             assertEquals(n, prog.runOrThrow())
         },
-        // 12. The documented way to post-process a continuation's result: resume from a
-        // deferred context. Every effect then goes through a program{} thunk that binds the
-        // rest of the interpretation, a deferred program that must not be forced in place.
+        // 12. One way to post-process a continuation's result: bind the resumed program in a
+        // block. Every effect then goes through a program{} thunk that binds the rest of the
+        // interpretation, a deferred program that must not be forced in place.
         TrampolineScenario("interpret with resume bound inside a program{} block") { n ->
             val result =
                 countIncrements(n)
@@ -257,5 +257,39 @@ val trampolineScenarios: List<TrampolineScenario> =
                     }
                 }
             assertEquals(n, rec(n).handleIncrements().runOrThrow())
+        },
+        // 17. The other way to post-process: transform the resumed program in place. The
+        // rule returns a lazy program with a step queued behind the continuation, and the
+        // enclosing force() loop runs each one and keeps the steps for the unwind.
+        TrampolineScenario("interpret with the resumed program transformed in place") { n ->
+            val result =
+                countIncrements(n)
+                    .interpret<Counter<*>, Int> { op, resume ->
+                        when (op) {
+                            is Increment -> resume(Unit).map { it }
+                        }
+                    }.runOrThrow()
+            assertEquals(n, result)
+        },
+        // 18. State threaded as a function in the result, with the continuation resumed
+        // inside that function after the rule has returned: the shape of a state handler
+        // written over the stateless interpret.
+        TrampolineScenario("state threaded as functions in the result") { n ->
+            val counted: Program<(Int) -> Program<Int>> =
+                countIncrements(n).interpret<Counter<*>, Int, (Int) -> Program<Int>>(
+                    transformDone = { Program.Done { count -> Program.Done(count) } },
+                    rule = { _, resume -> Program.Done { count -> resume(Unit).flatMap { continueWith -> continueWith(count + 1) } } },
+                )
+            assertEquals(n, counted.flatMap { continueWith -> continueWith(0) }.runOrThrow())
+        },
+        // 19. Middleware written with interpret: the effect is performed again downstream
+        // and the continuation resumed with the answer from inside a flatMap step.
+        TrampolineScenario("middleware via interpret then handle") { n ->
+            val result =
+                countIncrements(n)
+                    .interpret<Counter<*>, Int> { op, resume -> perform(op).flatMap { resume(it) } }
+                    .handleIncrements()
+                    .runOrThrow()
+            assertEquals(n, result)
         },
     )

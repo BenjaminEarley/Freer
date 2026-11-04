@@ -11,6 +11,7 @@ import com.benjaminearley.freer.flatMap
 import com.benjaminearley.freer.handle
 import com.benjaminearley.freer.handleS
 import com.benjaminearley.freer.intercept
+import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.map
 import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
@@ -84,6 +85,25 @@ object SharedPrograms {
             is Generator.Yielded -> step
             is Generator.Finished -> error("the generator finished without yielding")
         }
+
+    /**
+     * A continuation a rule kept from a run that went on without it: one resumer object,
+     * which every actor of every iteration resumes with a response of its own.
+     */
+    @JvmField
+    val kept: (Any?) -> Program<Int> =
+        run {
+            var captured: ((Any?) -> Program<Int>)? = null
+            askEnv().map { it + 1 }.interpret<Env<*>, Int> { _, resume ->
+                captured = resume
+                Program.Done(0)
+            }.runOrThrow()
+            captured!!
+        }
+
+    /** The kept continuation resumed with [environment]: one more than it. */
+    @JvmStatic
+    fun resumeKept(environment: Int): Int = kept(environment).runOrThrow()
 
     @JvmStatic
     fun runHandled(): Int = handled.runOrThrow()

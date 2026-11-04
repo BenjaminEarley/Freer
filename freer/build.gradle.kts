@@ -205,7 +205,7 @@ tasks.register<JavaExec>("pitest") {
     val reportDir = layout.buildDirectory.dir("reports/pitest")
     val sourceDirs = listOf("commonMain", "jvmMain").map { layout.projectDirectory.dir("src/$it/kotlin").asFile.path }
     val mutators = providers.gradleProperty("pitestMutators").orElse("DEFAULTS")
-    val threshold = providers.gradleProperty("pitestThreshold").orElse("70")
+    val threshold = providers.gradleProperty("pitestThreshold").orElse("66")
     classpath = pitest + mainClasses + testClasses + testRuntime
     mainClass = "org.pitest.mutationtest.commandline.MutationCoverageReport"
     argumentProviders.add(

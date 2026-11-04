@@ -72,22 +72,20 @@ class SemanticsTest {
     }
 
     @Test
-    fun transformingDirectResumeResultThrows() {
-        // Not silent corruption
-        assertContractViolation {
+    fun theResumedProgramCanBeTransformedInPlace() {
+        val result =
             askPlusOne()
                 .interpret<Ask<*>, Int> { op, resume ->
                     when (op) {
-                        is AskInt -> resume(41).map { it }
+                        is AskInt -> resume(41).map { it + 100 }
                     }
                 }.runOrThrow()
-        }
+        assertEquals(142, result)
     }
 
     @Test
-    fun discardingDirectResumeResultThrows() {
-        // Not a lost continuation
-        assertContractViolation {
+    fun notReturningTheResumedProgramCutsTheProgramShort() {
+        val result =
             askPlusOne()
                 .interpret<Ask<*>, Int> { op, resume ->
                     when (op) {
@@ -97,13 +95,24 @@ class SemanticsTest {
                         }
                     }
                 }.runOrThrow()
-        }
+        assertEquals(99, result)
     }
 
     @Test
-    fun callingResumeDirectlyTwiceThrows() {
-        // Not last-branch-wins
-        assertContractViolation {
+    fun resumingTwiceGivesTwoIndependentPrograms() {
+        val both =
+            askPlusOne()
+                .interpret<Ask<*>, Int> { op, resume ->
+                    when (op) {
+                        is AskInt -> {
+                            val first = resume(1)
+                            val second = resume(2)
+                            first.flatMap { x -> second.map { y -> x * 100 + y } }
+                        }
+                    }
+                }.runOrThrow()
+        assertEquals(203, both)
+        val last =
             askPlusOne()
                 .interpret<Ask<*>, Int> { op, resume ->
                     when (op) {
@@ -113,90 +122,13 @@ class SemanticsTest {
                         }
                     }
                 }.runOrThrow()
-        }
+        assertEquals(3, last)
     }
 
     @Test
     fun runOrThrowNamesTheUnhandledEffect() {
         val e = assertFailsWith<IllegalStateException> { askPlusOne().runOrThrow() }
         assertContains(e.message.orEmpty(), "AskInt")
-    }
-
-    // A program whose continuation calls, once, the resume that the rule handling it has
-    // leaked: the rule is still running, so the call is a second direct resume made from
-    // inside the first, and what it hands back is the trampoline marker.
-    private fun reentrantContinuation(leaked: () -> (Any?) -> Program<Int>): Program<Int> {
-        var reentered = false
-        return perform(AskInt).flatMap { n ->
-            if (reentered) {
-                Program.Done(n)
-            } else {
-                reentered = true
-                leaked()(n)
-            }
-        }
-    }
-
-    @Test
-    fun aDirectResumeReenteredFromTheContinuationThrows() {
-        // Not a marker run as a program: one step behind the effect, the marker comes
-        // back as the resumed program itself.
-        var leaked: ((Any?) -> Program<Int>)? = null
-        assertContractViolation {
-            reentrantContinuation { leaked!! }
-                .interpret<Ask<*>, Int> { _, resume ->
-                    leaked = resume
-                    resume(1)
-                }.runOrThrow()
-        }
-        // Two steps: the marker comes out of the first step with another queued behind it.
-        assertContractViolation {
-            reentrantContinuation { leaked!! }
-                .map { it + 1 }
-                .interpret<Ask<*>, Int> { _, resume ->
-                    leaked = resume
-                    resume(1)
-                }.runOrThrow()
-        }
-    }
-
-    @Test
-    fun aDirectResumeReturnedByAnotherRuleThrows() {
-        // Not a lost continuation: the inner rule returns what the outer rule's direct
-        // resume gave it, so the inner loop sees a marker it never handed out.
-        var leaked: ((Any?) -> Program<Int>)? = null
-        var calls = 0
-        val prog = perform(AskInt).flatMap { n -> perform(Say("x")).map { n } }
-        assertContractViolation {
-            prog
-                .interpret<Out<*>, Int> { _, resume -> if (calls++ == 0) leaked!!(2) else resume(Unit) }
-                .interpret<Ask<*>, Int> { _, resume ->
-                    leaked = resume
-                    resume(1)
-                }.runOrThrow()
-        }
-    }
-
-    @Test
-    fun interpretSDetectsLeakedDirectResumesToo() {
-        var leaked: ((Any?) -> Program<Int>)? = null
-        assertContractViolation {
-            reentrantContinuation { leaked!! }
-                .interpretS<Ask<*>, Int, Int>(0) { s, _, resume ->
-                    leaked = { n -> resume(s, n) }
-                    resume(s, 1)
-                }.runOrThrow()
-        }
-        var calls = 0
-        val prog = perform(AskInt).flatMap { n -> perform(Say("x")).map { n } }
-        assertContractViolation {
-            prog
-                .interpretS<Out<*>, Int, Int>(0) { s, _, resume -> if (calls++ == 0) leaked!!(2) else resume(s, Unit) }
-                .interpret<Ask<*>, Int> { _, resume ->
-                    leaked = resume
-                    resume(1)
-                }.runOrThrow()
-        }
     }
 
     @Test
@@ -232,16 +164,16 @@ class SemanticsTest {
     }
 
     @Test
-    fun sameContractHoldsForInterpretS() {
-        assertContractViolation {
+    fun theSameFormsWorkForInterpretS() {
+        val transformed =
             askPlusOne()
                 .interpretS<Ask<*>, Int, Int>(0) { s, op, resume ->
                     when (op) {
-                        is AskInt -> resume(s, 41).map { it }
+                        is AskInt -> resume(s, 41).map { it + 100 }
                     }
                 }.runOrThrow()
-        }
-        assertContractViolation {
+        assertEquals(142, transformed)
+        val cutShort =
             askPlusOne()
                 .interpretS<Ask<*>, Int, Int>(0) { s, op, resume ->
                     when (op) {
@@ -251,8 +183,8 @@ class SemanticsTest {
                         }
                     }
                 }.runOrThrow()
-        }
-        assertContractViolation {
+        assertEquals(99, cutShort)
+        val last =
             askPlusOne()
                 .interpretS<Ask<*>, Int, Int>(0) { s, op, resume ->
                     when (op) {
@@ -262,7 +194,46 @@ class SemanticsTest {
                         }
                     }
                 }.runOrThrow()
-        }
+        assertEquals(3, last)
+        val both =
+            askPlusOne()
+                .interpretS<Ask<*>, Int, Int>(0) { s, op, resume ->
+                    when (op) {
+                        is AskInt -> {
+                            val first = resume(s, 1)
+                            val second = resume(s, 2)
+                            first.flatMap { x -> second.map { y -> x * 100 + y } }
+                        }
+                    }
+                }.runOrThrow()
+        assertEquals(203, both)
+        // Each resumption carries its own state: the final state is the second one's.
+        val withState =
+            askPlusOne()
+                .interpretS<Ask<*>, Int, Int, Pair<Int, Int>>(0, { s, a -> Program.Done(a to s) }) { s, op, resume ->
+                    when (op) {
+                        is AskInt -> {
+                            resume(s + 1, 1)
+                            resume(s + 2, 2)
+                        }
+                    }
+                }.runOrThrow()
+        assertEquals(3 to 2, withState)
+    }
+
+    @Test
+    fun aBlockCompletesWithItsValueOrWithItsException() {
+        assertEquals(7, program { 7 }.runOrThrow())
+        val before = assertFailsWith<IllegalStateException> { program<Int> { error("before any bind") }.runOrThrow() }
+        assertEquals("before any bind", before.message)
+        val after =
+            assertFailsWith<IllegalStateException> {
+                program {
+                    perform(AskInt).bind()
+                    error("after a bind")
+                }.handle<Ask<*>, Int> { 1 }.runOrThrow()
+            }
+        assertEquals("after a bind", after.message)
     }
 
     @Test

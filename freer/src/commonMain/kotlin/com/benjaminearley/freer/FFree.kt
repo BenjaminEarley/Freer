@@ -15,11 +15,13 @@ internal typealias Erased = Any?
 
 /**
  * Handle and remove every effect of family [E], mapping the final value with
- * [transformDone]. [rule] receives the effect and a `resume` continuation; a direct
- * `resume` call inside the rule may happen at most once and its result must be
- * returned unchanged (the interpreter trampolines it and throws on misuse). To
- * transform the result, call `resume` from a deferred context such as inside
- * `program { }` or a `flatMap` on a non-`Done` program. Applied lazily.
+ * [transformDone]. [rule] receives the effect and a `resume` continuation:
+ * `resume(response)` is the rest of the program with `response` as the effect's
+ * result, as a program that nothing has run yet. Return it to continue, transform it
+ * with [flatMap] or [map] or bind it in a `program { }` block to work on the rest's
+ * result, call it more than once to resume the same continuation more than once, or
+ * leave it uncalled to cut the program short. Every form runs on a constant stack.
+ * Applied lazily, when the program is run.
  */
 public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
     noinline transformDone: (A) -> Program<B>,
@@ -27,11 +29,13 @@ public inline fun <reified E : Effect<*>, A, B> Program<A>.interpret(
 ): Program<B> = interpretWith(E::class, transformDone, rule)
 
 /**
- * Handle and remove every effect of family [E]. A direct `resume` call inside [rule]
- * may happen at most once and its result must be returned unchanged (the interpreter
- * trampolines it and throws on misuse); to transform the result, call `resume` from a
- * deferred context such as inside `program { }` or a `flatMap` on a non-`Done`
- * program. The handler is applied lazily, when the program is run.
+ * Handle and remove every effect of family [E]. [rule] receives the effect and a
+ * `resume` continuation: `resume(response)` is the rest of the program with `response`
+ * as the effect's result, as a program that nothing has run yet. Return it to continue,
+ * transform it with [flatMap] or [map] or bind it in a `program { }` block to work on
+ * the rest's result, call it more than once to resume the same continuation more than
+ * once, or leave it uncalled to cut the program short. Every form runs on a constant
+ * stack. Applied lazily, when the program is run.
  */
 public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule: (E, (Any?) -> Program<A>) -> Program<A>): Program<A> =
     interpretWith(E::class, rule)
@@ -39,8 +43,8 @@ public inline fun <reified E : Effect<*>, A> Program<A>.interpret(noinline rule:
 /**
  * Handle and remove every effect of family [E], threading state [S] from
  * [initialState] through every step; [transformDone] sees the final state and value.
- * `resume` takes the next state and the response. The rule contract and lazy
- * application of [interpret] apply.
+ * `resume` takes the next state and the response, and is the rest of the program as in
+ * [interpret], with the same forms and the same lazy application.
  */
 public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
     initialState: S,
@@ -50,8 +54,8 @@ public inline fun <reified E : Effect<*>, S, A, B> Program<A>.interpretS(
 
 /**
  * Handle and remove every effect of family [E], threading state [S] from
- * [initialState]; `resume` takes the next state and the response. The rule contract
- * and lazy application of [interpret] apply.
+ * [initialState]; `resume` takes the next state and the response, and is the rest of
+ * the program as in [interpret], with the same forms and the same lazy application.
  */
 public inline fun <reified E : Effect<*>, S, A> Program<A>.interpretS(
     initialState: S,
@@ -69,13 +73,9 @@ public fun <A> Program<A>.runOrThrow(): A =
             error("Unhandled effect: ${forced.effect}")
         }
 
-        is Program.Defer -> {
-            // unreachable: force() removes Defer
+        is Program.Defer, is Program.Lazy -> {
+            // unreachable: force() leaves neither
             forced.runOrThrow()
-        }
-
-        is Program.Bounce -> {
-            trampolineMisuse()
         }
     }
 
@@ -93,13 +93,9 @@ public fun <A> Program<A>.run(): Result<A> =
             Result.failure(IllegalStateException("Unhandled effect: ${forced.effect}"))
         }
 
-        is Program.Defer -> {
-            // unreachable: force() removes Defer
+        is Program.Defer, is Program.Lazy -> {
+            // unreachable: force() leaves neither
             forced.run()
-        }
-
-        is Program.Bounce -> {
-            trampolineMisuse()
         }
     }
 
@@ -200,31 +196,38 @@ public sealed class Program<out A> {
         val pipeline: Pipeline<Response, A>, // The continuation logic
     ) : Program<A>()
 
-    // Lazy: The program is a description that is (re)built on demand. Interpreting
-    // forces the thunk, so the same Program value can be interpreted any number of
-    // times — each interpretation gets a fresh underlying structure. This is what
-    // makes program{} blocks pure, reusable descriptions despite being backed by
-    // one-shot coroutine state machines.
-    // pending queues binds appended after this Defer was built: flatMap/map on an
-    // unforced program append here in O(1) instead of nesting a closure per bind
-    // (closure nesting consumes stack proportional to chain length when forced).
-    // force() drains it through the thunk's result.
-    internal class Defer<out A>(
-        val pending: Pipeline<Erased, Erased>? = null,
-        val thunk: () -> Program<Erased>,
-    ) : Program<A>()
+    // Lazy: a description that is (re)built on demand by build(). Interpreting builds
+    // it, so the same Program value can be interpreted any number of times — each
+    // interpretation gets a fresh underlying structure. This is what makes program{}
+    // blocks pure, reusable descriptions despite being backed by one-shot coroutine
+    // state machines. The continuation a rule resumes is one too: built, it runs the
+    // rest of the interpretation under that rule's handler.
+    internal abstract class Lazy<out A> : Program<A>() {
+        abstract fun build(): Program<Erased>
+    }
 
-    // Internal trampoline marker: returned by a direct resume() call inside the
-    // interpreter loops. Never a real program value — any attempt to use it as one
-    // is a broken rule contract (see interpret) and fails with trampolineMisuse().
-    internal data object Bounce : Program<Nothing>()
+    // A lazy program from a function.
+    internal class Thunk<out A>(
+        private val thunk: () -> Program<Erased>,
+    ) : Lazy<A>() {
+        override fun build(): Program<Erased> = thunk()
+    }
+
+    // Binds queued behind a lazy program: flatMap/map on one append here in O(1)
+    // instead of nesting a closure per bind (closure nesting consumes stack
+    // proportional to chain length when forced). force() drains the queue through the
+    // built program.
+    internal class Defer<out A>(
+        val pending: Pipeline<Erased, Erased>,
+        val inner: Lazy<*>,
+    ) : Program<A>()
 
     internal companion object {
         val DONE_UNIT: Program<Unit> = Done(Unit)
     }
 }
 
-// Unwrap Defer nodes — draining any binds queued on them — until a concrete
+// Build Lazy nodes — draining the binds queued on them — until a concrete
 // Done/Suspended program emerges.
 internal fun <A> Program<A>.force(): Program<A> {
     Nesting.enter()
@@ -234,14 +237,13 @@ internal fun <A> Program<A>.force(): Program<A> {
         while (true) {
             when (val c = current) {
                 is Program.Defer -> {
-                    val own = c.pending
-                    if (own != null) {
-                        // c is nested inside the Defers seen so far, so its queued
-                        // binds apply before the ones already accumulated.
-                        pending = if (pending == null) own else Pipeline.Join(own, pending)
-                    }
-                    current = c.thunk()
+                    // c is nested inside the Defers seen so far, so its queued binds
+                    // apply before the ones already accumulated.
+                    pending = if (pending == null) c.pending else Pipeline.Join(c.pending, pending)
+                    current = c.inner
                 }
+
+                is Program.Lazy -> current = c.build()
 
                 is Program.Done -> {
                     val p = pending ?: return c as Program<A>
@@ -263,7 +265,6 @@ internal fun <A> Program<A>.force(): Program<A> {
                     return Program.Suspended(suspended.effect, pipeline) as Program<A>
                 }
 
-                is Program.Bounce -> trampolineMisuse()
             }
         }
     } finally {
@@ -279,7 +280,7 @@ internal fun <E : Effect<*>, A, B> Program<A>.interpretWith(
     type: KClass<E>,
     transformDone: (A) -> Program<B>,
     rule: (E, (Erased) -> Program<B>) -> Program<B>,
-): Program<B> = Program.Defer { interpreterLoop(this, type, transformDone, rule) }
+): Program<B> = Program.Thunk { interpreterLoop(this, type, transformDone, rule) }
 
 @PublishedApi
 internal fun <E : Effect<*>, A> Program<A>.interpretWith(
@@ -293,7 +294,7 @@ internal fun <E : Effect<*>, S, A, B> Program<A>.interpretSWith(
     initialState: S,
     transformDone: (S, A) -> Program<B>,
     rule: (S, E, (S, Erased) -> Program<B>) -> Program<B>,
-): Program<B> = Program.Defer { interpreterLoopS(this, initialState, type, transformDone, rule) }
+): Program<B> = Program.Thunk { interpreterLoopS(this, initialState, type, transformDone, rule) }
 
 @PublishedApi
 internal fun <E : Effect<*>, S, A> Program<A>.interpretSWith(
@@ -301,14 +302,6 @@ internal fun <E : Effect<*>, S, A> Program<A>.interpretSWith(
     initialState: S,
     rule: (S, E, (S, Erased) -> Program<A>) -> Program<A>,
 ): Program<A> = interpretSWith(type, initialState, { _, a -> Program.Done(a) }, rule)
-
-internal fun trampolineMisuse(): Nothing =
-    throw IllegalStateException(
-        "Broken rule contract: the Program returned by a direct resume() call is an internal " +
-            "trampoline marker, not a real value — return it from the rule unchanged. To transform " +
-            "or combine continuation results, call resume from a genuinely deferred context " +
-            "instead (e.g. bind it inside a program{} block).",
-    )
 
 /**
  * Sequence [f] after this program. Evaluation timing follows the receiver: on a
@@ -347,12 +340,11 @@ internal fun <A, B> Program<A>.then(step: Pipeline.Step<A, B>): Program<B> =
         }
 
         is Program.Defer -> {
-            val next = step as Pipeline.Step<Erased, Erased>
-            Program.Defer(pending?.then(next) ?: next, thunk)
+            Program.Defer(pending.then(step as Pipeline.Step<Erased, Erased>), inner)
         }
 
-        is Program.Bounce -> {
-            trampolineMisuse()
+        is Program.Lazy -> {
+            Program.Defer(step as Pipeline<Erased, Erased>, this)
         }
     }
 
@@ -390,19 +382,18 @@ internal tailrec fun <A, B> resume(
                     }
 
                     is Program.Defer -> {
-                        // Step returned a lazy program. Invariant: a Defer is never forced
-                        // from inside a step or a bind — only force() and the interpreter
-                        // loops force, and they loop. Forcing here would nest one JVM frame
-                        // per level of non-tail bind recursion (each level's thunk reaches
-                        // this point again). Instead, queue the Right side behind the binds
-                        // already pending on the Defer and hand it back to the enclosing
+                        // Step returned a lazy program. Invariant: a lazy program is never
+                        // built from inside a step or a bind — only force() and the
+                        // interpreter loops build, and they loop. Building here would nest
+                        // one JVM frame per level of non-tail bind recursion (each level's
+                        // thunk reaches this point again). Instead, queue the Right side
+                        // behind the binds already pending and hand it back to the enclosing
                         // loop, which drains the whole chain iteratively.
-                        val own = result.pending
-                        Program.Defer<B>(if (own == null) right else Pipeline.Join(own, right), result.thunk)
+                        Program.Defer<B>(Pipeline.Join(result.pending, right), result.inner)
                     }
 
-                    is Program.Bounce -> {
-                        trampolineMisuse()
+                    is Program.Lazy -> {
+                        Program.Defer<B>(right, result)
                     }
 
                     is Program.Suspended<*, *> -> {
@@ -434,32 +425,15 @@ internal tailrec fun <A, B> resume(
         }
     }
 
-internal fun directResumeCalledTwice(): Nothing =
-    throw IllegalStateException(
-        "Broken rule contract: resume() may be called at most once directly from a rule. " +
-            "For multi-shot resumption, call resume from a genuinely deferred context " +
-            "(e.g. bind it inside a program{} block).",
-    )
-
-internal fun directResumeDiscarded(): Nothing =
-    throw IllegalStateException(
-        "Broken rule contract: the rule called resume() directly but returned a different " +
-            "Program — the resumed continuation would be silently lost. Return the result of " +
-            "resume() unchanged, or do not call resume() at all (to short-circuit).",
-    )
-
 // Stack-safe Generic Interpreter Loop
-// Uses a trampoline: when a rule calls resume() directly and returns the result,
-// the continuation returns the internal Bounce marker instead of recursing. The
-// while-loop detects it and iterates. When resume() is called from a deferred
-// context (e.g. bound inside a program{} block), the continuation re-enters this
-// loop recursively — but only one level deep: the nested loop runs until the next
-// matching effect, whose rule returns its own deferred program, and then returns
-// it unforced. That Defer is drained by the enclosing force() loop (a Defer is
-// never forced from inside a step or a bind), so every deferred resume starts
-// from the same stack depth instead of nesting one frame per effect. Violations
-// of the rule contract (see interpret) fail with IllegalStateException instead
-// of corrupting silently.
+// A rule's resume call builds the rest of the program as a lazy value and runs
+// nothing. When the rule returns that value, the loop runs the continuation itself
+// and iterates, so a chain of such rules stays on one stack frame. Any other program
+// the rule returns, including one built from the continuation with flatMap or a
+// block, goes back to the enclosing force() loop, which invokes the lazy program
+// there: that re-enters this loop one level down for the next matching effect,
+// whose result returns the same way, so every form of resume runs on a constant
+// stack (a lazy program is never built from inside a step or a bind).
 internal fun <Target : Effect<*>, A, B> interpreterLoop(
     initialProgram: Program<A>,
     targetClass: KClass<Target>,
@@ -476,12 +450,8 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
                     return transformDone(current.value)
                 }
 
-                is Program.Defer -> {
+                is Program.Defer, is Program.Lazy -> {
                     program = current.force()
-                }
-
-                is Program.Bounce -> {
-                    trampolineMisuse()
                 }
 
                 is Program.Suspended<*, *> -> {
@@ -493,15 +463,15 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
                         // MATCH: We found the effect we are looking for.
                         val resumer = Resumer(pipeline, targetClass, transformDone, rule)
                         val result = rule(effect as Target, resumer)
-                        resumer.direct = false // Any future calls to this continuation are deferred
-
-                        val next = resumer.next
-                        if (result is Program.Bounce) {
-                            program = next ?: trampolineMisuse()
-                            continue
-                        }
-                        if (next != null) directResumeDiscarded()
-                        return result
+                        resumer.direct = false // Later calls build lazy programs of their own
+                        // The rule returned the continuation it was given: run it here.
+                        val response =
+                            when {
+                                result === resumer -> resumer.response
+                                result is Resumed<*> && result.owner === resumer -> result.response
+                                else -> return result
+                            }
+                        program = resume(pipeline, response)
                     } else {
                         // NO MATCH: Relay the effect.
                         // The continuation waits for the response, then re-enters this loop.
@@ -528,38 +498,48 @@ private class RelayStep<Target : Effect<*>, A, B>(
         interpreterLoop(resume(pipeline, input), targetClass, transformDone, rule)
 }
 
-// The continuation interpreterLoop hands to a rule: one object per matched effect,
-// holding the trampoline's bookkeeping (`next`, `direct`) as plain fields rather
-// than as a lambda plus a box for each captured variable.
+// The continuation interpreterLoop hands to a rule, and the lazy program its first call
+// returns: that call stores its response here instead of allocating, and the loop
+// recognises the object when the rule returns it. Later calls, and every call after the
+// rule has returned, get a Resumed of their own, so a continuation kept past its rule is
+// immutable and can be resumed from any thread. One object per matched effect.
 private class Resumer<Target : Effect<*>, A, B>(
     private val pipeline: Pipeline<Erased, A>,
     private val targetClass: KClass<Target>,
     private val transformDone: (A) -> Program<B>,
     private val rule: (Target, (Erased) -> Program<B>) -> Program<B>,
-) : (Erased) -> Program<B> {
-    // The resumed program recorded by a direct call, for the loop to iterate on.
-    var next: Program<A>? = null
+) : Program.Lazy<B>(),
+    (Erased) -> Program<B> {
+    // The response of the call this object stands for.
+    var response: Erased = null
+    private var handedOut = false
 
-    // True while the rule is running; the loop clears it once the rule returns, so
-    // every later call is a deferred resume.
+    // True while the rule is running; the loop clears it once the rule returns.
     var direct = true
 
     override fun invoke(response: Erased): Program<B> {
-        if (direct && next != null) directResumeCalledTwice()
-        val resumed = resume(pipeline, response)
-        return if (direct) {
-            // Called directly by the rule — trampoline
-            next = resumed
-            Program.Bounce
-        } else {
-            // Called from a deferred context (e.g. inside flatMap) — recurse normally
-            interpreterLoop(resumed, targetClass, transformDone, rule)
-        }
+        if (!direct || handedOut) return Resumed(this, response)
+        handedOut = true
+        this.response = response
+        return this
     }
+
+    // Built by force(): the rest of the interpretation from this continuation on.
+    override fun build(): Program<Erased> = run(response)
+
+    fun run(response: Erased): Program<Erased> = interpreterLoop(resume(pipeline, response), targetClass, transformDone, rule)
 }
 
-// Stack-safe Stateful Interpreter Loop (paper's handleRelayS)
-// Same trampoline as interpreterLoop, but threads state S through every step.
+// A further resumption of a continuation, immutable; run when forced.
+private class Resumed<B>(
+    val owner: Resumer<*, *, B>,
+    val response: Erased,
+) : Program.Lazy<B>() {
+    override fun build(): Program<Erased> = owner.run(response)
+}
+
+// Stack-safe Stateful Interpreter Loop
+// As interpreterLoop, but threads state S through every step.
 internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
     initialProgram: Program<A>,
     initialState: S,
@@ -578,12 +558,8 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                     return transformDone(state, current.value)
                 }
 
-                is Program.Defer -> {
+                is Program.Defer, is Program.Lazy -> {
                     program = current.force()
-                }
-
-                is Program.Bounce -> {
-                    trampolineMisuse()
                 }
 
                 is Program.Suspended<*, *> -> {
@@ -595,15 +571,21 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
                         val resumer = ResumerS(pipeline, targetClass, transformDone, rule)
                         val result = rule(state, effect as Target, resumer)
                         resumer.direct = false
+                        val response: Erased
+                        when {
+                            result === resumer -> {
+                                response = resumer.response
+                                state = resumer.state as S
+                            }
 
-                        val next = resumer.next
-                        if (result is Program.Bounce) {
-                            program = next ?: trampolineMisuse()
-                            state = resumer.nextState as S
-                            continue
+                            result is ResumedS<*> && result.owner === resumer -> {
+                                response = result.response
+                                state = result.state as S
+                            }
+
+                            else -> return result
                         }
-                        if (next != null) directResumeDiscarded()
-                        return result
+                        program = resume(pipeline, response)
                     } else {
                         // Capture the state as of this relay, not a mutable reference: a
                         // multi-shot outer handler resumes this continuation several times,
@@ -633,30 +615,43 @@ private class RelayStepS<Target : Effect<*>, S, A, B>(
         interpreterLoopS(resume(pipeline, input), state, targetClass, transformDone, rule)
 }
 
-// The continuation interpreterLoopS hands to a rule: Resumer plus the state a
-// direct call resumes with.
+// The continuation interpreterLoopS hands to a rule: Resumer plus the state to go on
+// with.
 private class ResumerS<Target : Effect<*>, S, A, B>(
     private val pipeline: Pipeline<Erased, A>,
     private val targetClass: KClass<Target>,
     private val transformDone: (S, A) -> Program<B>,
     private val rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
-) : (S, Erased) -> Program<B> {
-    var next: Program<A>? = null
-    var nextState: Any? = null
+) : Program.Lazy<B>(),
+    (S, Erased) -> Program<B> {
+    var response: Erased = null
+    var state: Any? = null
+    private var handedOut = false
     var direct = true
 
     override fun invoke(
         newState: S,
         response: Erased,
     ): Program<B> {
-        if (direct && next != null) directResumeCalledTwice()
-        val resumed = resume(pipeline, response)
-        return if (direct) {
-            next = resumed
-            nextState = newState
-            Program.Bounce
-        } else {
-            interpreterLoopS(resumed, newState, targetClass, transformDone, rule)
-        }
+        if (!direct || handedOut) return ResumedS(this, newState, response)
+        handedOut = true
+        state = newState
+        this.response = response
+        return this
     }
+
+    override fun build(): Program<Erased> = run(state, response)
+
+    fun run(
+        state: Any?,
+        response: Erased,
+    ): Program<Erased> = interpreterLoopS(resume(pipeline, response), state as S, targetClass, transformDone, rule)
+}
+
+private class ResumedS<B>(
+    val owner: ResumerS<*, *, *, B>,
+    val state: Any?,
+    val response: Erased,
+) : Program.Lazy<B>() {
+    override fun build(): Program<Erased> = owner.run(state, response)
 }

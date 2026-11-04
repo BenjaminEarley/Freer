@@ -55,6 +55,15 @@ class TrampolineTest {
     @Test
     fun recursiveBindBeforeTheEffect() = scenario(16)
 
+    @Test
+    fun interpretWithTheResumedProgramTransformedInPlace() = scenario(17)
+
+    @Test
+    fun stateThreadedAsFunctionsInTheResult() = scenario(18)
+
+    @Test
+    fun middlewareViaInterpretThenHandle() = scenario(19)
+
     private companion object {
         const val N = 100_000 // Well beyond the ~5-10K stack limit
     }

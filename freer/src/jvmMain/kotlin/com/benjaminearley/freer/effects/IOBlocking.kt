@@ -5,7 +5,6 @@ package com.benjaminearley.freer.effects
 import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.force
 import com.benjaminearley.freer.resume
-import com.benjaminearley.freer.trampolineMisuse
 import java.util.concurrent.ArrayBlockingQueue
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -31,9 +30,7 @@ public fun <A> Program<A>.ioBlocking(): A {
                 return c.value
             }
 
-            is Program.Defer -> current = c.force()
-
-            is Program.Bounce -> trampolineMisuse()
+            is Program.Defer, is Program.Lazy -> current = c.force()
 
             is Program.Suspended<*, *> -> {
                 val suspended = c as Program.Suspended<Any?, A>

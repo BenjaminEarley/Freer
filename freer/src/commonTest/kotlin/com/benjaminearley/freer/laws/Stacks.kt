@@ -82,9 +82,10 @@ val countTicksByFunctionsHandler =
 private fun Random.familyHandler(family: Family): Handler =
     when (family) {
         Family.TICK ->
-            when (nextInt(5)) {
+            when (nextInt(6)) {
                 0 -> countTicksHandler
                 1 -> countTicksByFunctionsHandler
+                5 -> Handler("countTicksAfterwards", family, readOnly = false, lib = { it.countTicksAfterwards() }, ref = { it.countTicksAfterwards() })
                 2 ->
                     Handler("countTicksQuietly", family, readOnly = false, lib = { it.countTicksQuietly() }, ref = {
                         it.countTicks().map { counted -> counted.first }

@@ -13,6 +13,7 @@ import com.benjaminearley.freer.handleS
 import com.benjaminearley.freer.intercept
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.interpretS
+import com.benjaminearley.freer.map
 import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
 import com.benjaminearley.freer.runOrThrow
@@ -68,6 +69,20 @@ class EffectBenchmark {
 
     @Benchmark
     fun dslInterpretDirect(): Int = countIncrements().interpret<Tick<*>, Int> { _, resume -> resume(Unit) }.runOrThrow()
+
+    // The resumed program transformed in place: a lazy program with one step queued behind
+    // the continuation, run by the enclosing force() loop instead of by the handler's own.
+    @Benchmark
+    fun dslInterpretTransform(): Int = countIncrements().interpret<Tick<*>, Int> { _, resume -> resume(Unit).map { it } }.runOrThrow()
+
+    // Middleware written with interpret: the effect is performed again downstream and the
+    // continuation resumed with the answer, with no coroutine parked in between.
+    @Benchmark
+    fun dslMiddlewareViaInterpretThenHandle(): Int =
+        countIncrements()
+            .interpret<Tick<*>, Int> { op, resume -> perform(op).flatMap { resume(it) } }
+            .handle<Tick<*>, Int> { Unit }
+            .runOrThrow()
 
     @Benchmark
     fun dslHandleS(): Int = countIncrements().handleS<Tick<*>, Int, Int>(0) { count, _ -> (count + 1) to Unit }.runOrThrow()

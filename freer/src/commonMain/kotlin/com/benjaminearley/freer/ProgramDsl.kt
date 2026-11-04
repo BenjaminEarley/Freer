@@ -89,15 +89,15 @@ private class ProgramScopeImpl :
                 // on long chains of already-Done binds.
                 continuation.resumeWith(Result.success(program.value))
             } else {
-                // Suspended or Defer: queue the continuation behind it without
-                // forcing. Invariant: a Defer is never forced from inside a step
-                // or a bind — only force() and the interpreter loops force, and
-                // they loop. program{} runs buildProgram inside its own Defer's
-                // thunk, so forcing here would nest one JVM frame per level
-                // whenever the bound Defer's thunk binds another Defer (nested
-                // recursive program{} blocks, or a rule that binds resume).
-                // then(step) appends to the Defer's pending queue in O(1), and
-                // the enclosing force() loop drains the chain iteratively.
+                // Suspended or lazy: queue the continuation behind it without
+                // building. Invariant: a lazy program is never built from inside a
+                // step or a bind — only force() and the interpreter loops build,
+                // and they loop. program{} runs buildProgram inside its own thunk,
+                // so building here would nest one JVM frame per level whenever
+                // the bound thunk binds another lazy program (nested recursive
+                // program{} blocks, or a rule that binds resume). then(step)
+                // queues the step in O(1), and the enclosing force() loop drains
+                // the chain iteratively.
                 return program.then(BindStep(this, continuation)) as Program<A>
             }
         }
@@ -135,7 +135,7 @@ private class BindStep(
  * of times, under different handler stacks.
  */
 public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
-    Program.Defer {
+    Program.Thunk {
         val scope = ProgramScopeImpl()
         block.createCoroutineUnintercepted(receiver = scope, completion = scope).resume(Unit)
         scope.buildProgram()
@@ -144,7 +144,7 @@ public fun <A> program(block: suspend ProgramScope.() -> A): Program<A> =
 // Run a rule block eagerly and continue with [onValue] on its result. A block that
 // returns without suspending hands its value over directly, with no completion round
 // trip and no Program wrapper; one that suspends is built into a concrete
-// Done/Suspended program — program(block).force() without the intermediate Defer —
+// Done/Suspended program — program(block).force() without the intermediate thunk —
 // and [onValue] is queued behind it. Handler rules force immediately, so nothing
 // needs the laziness; program{} keeps it for users. When the rule returns without
 // suspending, the objects this costs per effect are the scope and a copy of the rule

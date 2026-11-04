@@ -243,6 +243,29 @@ class PaperExamplesTest {
             tsplit.msplit().flatMap { unsplit(it) }.runWriter().collectAll().runOrThrow(),
         )
 
+    // The same four, with the writer that builds its log on the way back, as the Haskell does.
+
+    @Test
+    fun tsplitr10CollectInsideWriterAfterwards() = assertEquals(listOf(1, 2) to listOf("begin", "end"), tsplit.collectAll().runWriterAfterwards().runOrThrow())
+
+    @Test
+    fun tsplitr11SplitAndUnsplitInsideWriterAfterwards() =
+        assertEquals(
+            listOf(1, 2) to listOf("begin", "end"),
+            tsplit.msplit().flatMap { unsplit(it) }.collectAll().runWriterAfterwards().runOrThrow(),
+        )
+
+    @Test
+    fun tsplitr20WriterAfterwardsInsideCollect() =
+        assertEquals(listOf(1 to listOf("begin"), 2 to listOf("end")), tsplit.runWriterAfterwards().collectAll().runOrThrow())
+
+    @Test
+    fun tsplitr21SplitAndUnsplitWriterAfterwardsInsideCollect() =
+        assertEquals(
+            listOf(1 to listOf("begin"), 2 to listOf("begin", "end")),
+            tsplit.msplit().flatMap { unsplit(it) }.runWriterAfterwards().collectAll().runOrThrow(),
+        )
+
     // ---- Exceptions and nondeterminism together
 
     private val fiveSevenOne = choose(listOf(5, 7, 1))

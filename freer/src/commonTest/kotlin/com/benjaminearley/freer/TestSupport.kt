@@ -28,9 +28,3 @@ fun assertMissingBind(block: () -> Any?) {
     val e = assertFailsWith<IllegalStateException> { block() }
     assertContains(e.message.orEmpty(), ".bind()")
 }
-
-// Asserts that block fails because an interpret rule broke the resume contract.
-fun assertContractViolation(block: () -> Any?) {
-    val e = assertFailsWith<IllegalStateException> { block() }
-    assertContains(e.message.orEmpty(), "rule contract")
-}
