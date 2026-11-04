@@ -1,8 +1,8 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
+# Everything IntelliJ writes here is local IDE state, except the few project-wide
+# settings listed below, which are tracked so the IDE behaves the same for everyone.
+*
+!/.gitignore
+!/codeStyles/
+!/codeStyles/*
+!/ktlint-plugin.xml
+!/vcs.xml
