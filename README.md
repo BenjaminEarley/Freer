@@ -8,7 +8,7 @@ API reference (KDoc): [benjaminearley.github.io/Freer](https://benjaminearley.gi
 
 ## Installation
 
-Add `implementation("com.benjaminearley:freer:0.2.1")` to a common source set or any JVM module. Targets: JVM, Wasm, macOS, iOS, Linux and Windows. Everything is common code except `ioBlocking()`, which is JVM-only. `com.benjaminearley:freer-trace`, JVM-only, records, replays, stores and draws program runs.
+Add `implementation("com.benjaminearley:freer:0.3.0")` to a common source set or any JVM module. Targets: JVM, Wasm, macOS, iOS, Linux and Windows. Everything is common code except `ioBlocking()`, which is JVM-only. `com.benjaminearley:freer-trace`, JVM-only, records, replays, stores and draws program runs.
 
 ## Quick Example
 
