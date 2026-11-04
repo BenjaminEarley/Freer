@@ -1,10 +1,10 @@
 package com.benjaminearley.freer.examples
 
-import com.benjaminearley.freer.examples.accounting.accountingExample
+import com.benjaminearley.freer.examples.paymentRefund.paymentRefundExample
 
 fun main() {
     println("\n--- Scenario 1: Sample Program ---")
-    accountingExample()
+    paymentRefundExample()
 
     println("\n--- Scenario 2: Left-Associated Bind Performance ---")
     bindChainComparison()

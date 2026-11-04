@@ -1,24 +1,24 @@
-package com.benjaminearley.freer.examples.accounting
+package com.benjaminearley.freer.examples.paymentRefund
 
 import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.effects.attempt
 import com.benjaminearley.freer.effects.ioBlocking
 import com.benjaminearley.freer.effects.raise
-import com.benjaminearley.freer.examples.accounting.effects.auditFraudCheck
-import com.benjaminearley.freer.examples.accounting.effects.auditKVStore
-import com.benjaminearley.freer.examples.accounting.effects.fraudCheck
-import com.benjaminearley.freer.examples.accounting.effects.get
-import com.benjaminearley.freer.examples.accounting.effects.isFraudulent
-import com.benjaminearley.freer.examples.accounting.effects.kvStore
-import com.benjaminearley.freer.examples.accounting.effects.kvStoreAsync
-import com.benjaminearley.freer.examples.accounting.effects.logError
-import com.benjaminearley.freer.examples.accounting.effects.logInfo
-import com.benjaminearley.freer.examples.accounting.effects.logger
-import com.benjaminearley.freer.examples.accounting.effects.put
+import com.benjaminearley.freer.examples.paymentRefund.effects.auditFraudCheck
+import com.benjaminearley.freer.examples.paymentRefund.effects.auditKVStore
+import com.benjaminearley.freer.examples.paymentRefund.effects.fraudCheck
+import com.benjaminearley.freer.examples.paymentRefund.effects.get
+import com.benjaminearley.freer.examples.paymentRefund.effects.isFraudulent
+import com.benjaminearley.freer.examples.paymentRefund.effects.kvStore
+import com.benjaminearley.freer.examples.paymentRefund.effects.kvStoreAsync
+import com.benjaminearley.freer.examples.paymentRefund.effects.logError
+import com.benjaminearley.freer.examples.paymentRefund.effects.logInfo
+import com.benjaminearley.freer.examples.paymentRefund.effects.logger
+import com.benjaminearley.freer.examples.paymentRefund.effects.put
 import com.benjaminearley.freer.program
 import com.benjaminearley.freer.runOrThrow
 
-fun accountingExample() {
+fun paymentRefundExample() {
     // Initial State
     val database =
         mutableMapOf(

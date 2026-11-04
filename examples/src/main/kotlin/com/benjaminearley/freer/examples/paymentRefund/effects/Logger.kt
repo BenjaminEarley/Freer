@@ -1,4 +1,4 @@
-package com.benjaminearley.freer.examples.accounting.effects
+package com.benjaminearley.freer.examples.paymentRefund.effects
 
 import com.benjaminearley.freer.Effect
 import com.benjaminearley.freer.Program
