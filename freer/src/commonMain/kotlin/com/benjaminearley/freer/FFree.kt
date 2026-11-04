@@ -193,42 +193,47 @@ public sealed class Program<out A> {
 // Unwrap Defer nodes — draining any binds queued on them — until a concrete
 // Done/Suspended program emerges.
 internal fun <A> Program<A>.force(): Program<A> {
-    var current: Program<Erased> = this
-    var pending: Pipeline<Erased, Erased>? = null
-    while (true) {
-        when (val c = current) {
-            is Program.Defer -> {
-                val own = c.pending
-                if (own != null) {
-                    // c is nested inside the Defers seen so far, so its queued
-                    // binds apply before the ones already accumulated.
-                    pending = if (pending == null) own else Pipeline.Join(own, pending)
-                }
-                current = c.thunk()
-            }
-
-            is Program.Done -> {
-                val p = pending ?: return c as Program<A>
-                pending = null
-                current = resume(p, c.value)
-            }
-
-            is Program.Suspended<*, *> -> {
-                val suspended = c as Program.Suspended<Erased, Erased>
-                val p = pending ?: return c as Program<A>
-                // A bare perform's identity step adds nothing in front of the queued
-                // binds (id-then-p = p), so they take its place.
-                val pipeline =
-                    if (suspended.pipeline === IDENTITY_STEP) {
-                        p
-                    } else {
-                        Pipeline.Join(suspended.pipeline, p)
+    Nesting.enter()
+    try {
+        var current: Program<Erased> = this
+        var pending: Pipeline<Erased, Erased>? = null
+        while (true) {
+            when (val c = current) {
+                is Program.Defer -> {
+                    val own = c.pending
+                    if (own != null) {
+                        // c is nested inside the Defers seen so far, so its queued
+                        // binds apply before the ones already accumulated.
+                        pending = if (pending == null) own else Pipeline.Join(own, pending)
                     }
-                return Program.Suspended(suspended.effect, pipeline) as Program<A>
-            }
+                    current = c.thunk()
+                }
 
-            is Program.Bounce -> trampolineMisuse()
+                is Program.Done -> {
+                    val p = pending ?: return c as Program<A>
+                    pending = null
+                    current = resume(p, c.value)
+                }
+
+                is Program.Suspended<*, *> -> {
+                    val suspended = c as Program.Suspended<Erased, Erased>
+                    val p = pending ?: return c as Program<A>
+                    // A bare perform's identity step adds nothing in front of the queued
+                    // binds (id-then-p = p), so they take its place.
+                    val pipeline =
+                        if (suspended.pipeline === IDENTITY_STEP) {
+                            p
+                        } else {
+                            Pipeline.Join(suspended.pipeline, p)
+                        }
+                    return Program.Suspended(suspended.effect, pipeline) as Program<A>
+                }
+
+                is Program.Bounce -> trampolineMisuse()
+            }
         }
+    } finally {
+        Nesting.exit()
     }
 }
 
@@ -427,47 +432,52 @@ internal fun <Target : Effect<*>, A, B> interpreterLoop(
     transformDone: (A) -> Program<B>, // Logic for "Pure" values (A -> B)
     rule: (Target, (Erased) -> Program<B>) -> Program<B>, // Logic for "Impure" effects
 ): Program<B> {
-    var program: Program<A> = initialProgram
+    Nesting.enter()
+    try {
+        var program: Program<A> = initialProgram
 
-    while (true) {
-        when (val current = program) {
-            is Program.Done -> {
-                return transformDone(current.value)
-            }
+        while (true) {
+            when (val current = program) {
+                is Program.Done -> {
+                    return transformDone(current.value)
+                }
 
-            is Program.Defer -> {
-                program = current.force()
-            }
+                is Program.Defer -> {
+                    program = current.force()
+                }
 
-            is Program.Bounce -> {
-                trampolineMisuse()
-            }
+                is Program.Bounce -> {
+                    trampolineMisuse()
+                }
 
-            is Program.Suspended<*, *> -> {
-                val suspended = current as Program.Suspended<Erased, A>
-                val effect = suspended.effect
-                val pipeline = suspended.pipeline
+                is Program.Suspended<*, *> -> {
+                    val suspended = current as Program.Suspended<Erased, A>
+                    val effect = suspended.effect
+                    val pipeline = suspended.pipeline
 
-                if (matchesEffect(targetClass, effect)) {
-                    // MATCH: We found the effect we are looking for.
-                    val resumer = Resumer(pipeline, targetClass, transformDone, rule)
-                    val result = rule(effect as Target, resumer)
-                    resumer.direct = false // Any future calls to this continuation are deferred
+                    if (matchesEffect(targetClass, effect)) {
+                        // MATCH: We found the effect we are looking for.
+                        val resumer = Resumer(pipeline, targetClass, transformDone, rule)
+                        val result = rule(effect as Target, resumer)
+                        resumer.direct = false // Any future calls to this continuation are deferred
 
-                    val next = resumer.next
-                    if (result is Program.Bounce) {
-                        program = next ?: trampolineMisuse()
-                        continue
+                        val next = resumer.next
+                        if (result is Program.Bounce) {
+                            program = next ?: trampolineMisuse()
+                            continue
+                        }
+                        if (next != null) directResumeDiscarded()
+                        return result
+                    } else {
+                        // NO MATCH: Relay the effect.
+                        // The continuation waits for the response, then re-enters this loop.
+                        return Program.Suspended(effect, RelayStep(pipeline, targetClass, transformDone, rule))
                     }
-                    if (next != null) directResumeDiscarded()
-                    return result
-                } else {
-                    // NO MATCH: Relay the effect.
-                    // The continuation waits for the response, then re-enters this loop.
-                    return Program.Suspended(effect, RelayStep(pipeline, targetClass, transformDone, rule))
                 }
             }
         }
+    } finally {
+        Nesting.exit()
     }
 }
 
@@ -523,51 +533,56 @@ internal fun <Target : Effect<*>, S, A, B> interpreterLoopS(
     transformDone: (S, A) -> Program<B>,
     rule: (S, Target, (S, Erased) -> Program<B>) -> Program<B>,
 ): Program<B> {
-    var program: Program<A> = initialProgram
-    var state = initialState
+    Nesting.enter()
+    try {
+        var program: Program<A> = initialProgram
+        var state = initialState
 
-    while (true) {
-        when (val current = program) {
-            is Program.Done -> {
-                return transformDone(state, current.value)
-            }
+        while (true) {
+            when (val current = program) {
+                is Program.Done -> {
+                    return transformDone(state, current.value)
+                }
 
-            is Program.Defer -> {
-                program = current.force()
-            }
+                is Program.Defer -> {
+                    program = current.force()
+                }
 
-            is Program.Bounce -> {
-                trampolineMisuse()
-            }
+                is Program.Bounce -> {
+                    trampolineMisuse()
+                }
 
-            is Program.Suspended<*, *> -> {
-                val suspended = current as Program.Suspended<Erased, A>
-                val effect = suspended.effect
-                val pipeline = suspended.pipeline
+                is Program.Suspended<*, *> -> {
+                    val suspended = current as Program.Suspended<Erased, A>
+                    val effect = suspended.effect
+                    val pipeline = suspended.pipeline
 
-                if (matchesEffect(targetClass, effect)) {
-                    val resumer = ResumerS(pipeline, targetClass, transformDone, rule)
-                    val result = rule(state, effect as Target, resumer)
-                    resumer.direct = false
+                    if (matchesEffect(targetClass, effect)) {
+                        val resumer = ResumerS(pipeline, targetClass, transformDone, rule)
+                        val result = rule(state, effect as Target, resumer)
+                        resumer.direct = false
 
-                    val next = resumer.next
-                    if (result is Program.Bounce) {
-                        program = next ?: trampolineMisuse()
-                        state = resumer.nextState as S
-                        continue
+                        val next = resumer.next
+                        if (result is Program.Bounce) {
+                            program = next ?: trampolineMisuse()
+                            state = resumer.nextState as S
+                            continue
+                        }
+                        if (next != null) directResumeDiscarded()
+                        return result
+                    } else {
+                        // Capture the state as of this relay, not a mutable reference: a
+                        // multi-shot outer handler resumes this continuation several times,
+                        // and each shot must re-enter with the state as it was here. This
+                        // capture is what makes per-branch (backtracking) state work when a
+                        // stateful handler sits inside a multi-shot one.
+                        return Program.Suspended(effect, RelayStepS(pipeline, state, targetClass, transformDone, rule))
                     }
-                    if (next != null) directResumeDiscarded()
-                    return result
-                } else {
-                    // Capture the state as of this relay, not a mutable reference: a
-                    // multi-shot outer handler resumes this continuation several times,
-                    // and each shot must re-enter with the state as it was here. This
-                    // capture is what makes per-branch (backtracking) state work when a
-                    // stateful handler sits inside a multi-shot one.
-                    return Program.Suspended(effect, RelayStepS(pipeline, state, targetClass, transformDone, rule))
                 }
             }
         }
+    } finally {
+        Nesting.exit()
     }
 }
 
