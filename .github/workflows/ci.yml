@@ -40,6 +40,11 @@ jobs:
         timeout-minutes: 45
         run: ./gradlew check :examples:run
 
+      # Fails below the mutation score threshold set in freer/build.gradle.kts.
+      - name: Mutation-test the JVM classes
+        timeout-minutes: 15
+        run: ./gradlew :freer:pitest
+
   macos:
     name: macOS (macOS and iOS simulator tests, all Apple targets)
     runs-on: macos-latest
@@ -92,3 +97,25 @@ jobs:
       - name: Test on Windows
         timeout-minutes: 75
         run: ./gradlew :freer:mingwX64Test
+
+  jcstress:
+    name: JCStress (JVM concurrency stress tests, quick mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The harness forks a JVM per test and configuration; quick mode keeps the whole run
+      # to a few minutes on the runner's cores.
+      - name: Run the JCStress tests
+        timeout-minutes: 30
+        run: ./gradlew :jcstress:run

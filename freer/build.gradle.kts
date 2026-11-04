@@ -178,6 +178,56 @@ afterEvaluate {
     }
 }
 
+// Mutation testing of the JVM classes: `./gradlew :freer:pitest` writes build/reports/pitest.
+// Pitest runs from its command-line jar through a plain JavaExec, because its Gradle plugin
+// expects a Java or Kotlin/JVM project and this is a multiplatform one. The mutable code is
+// the main output of the JVM target; the tests are the JVM test classes, which kotlin-test
+// runs under JUnit 4 on the JVM. toString, hashCode and equals are left alone: nothing but
+// a debug string depends on them, so a mutant there would only ever be junk. The run fails
+// below the score threshold; docs/mutation-testing.md classifies the mutants that survive
+// and explains the number. -PpitestMutators=ALL runs the full set, -PpitestThreshold=N
+// overrides the bar.
+val pitest: Configuration by configurations.creating
+
+dependencies {
+    pitest(libs.pitest.command.line)
+}
+
+tasks.register<JavaExec>("pitest") {
+    group = "verification"
+    description = "Runs Pitest over the JVM classes and writes build/reports/pitest"
+    dependsOn("jvmMainClasses", "jvmTestClasses")
+    val mainClasses = kotlin.jvm().compilations.getByName("main").output.classesDirs
+    val testClasses = kotlin.jvm().compilations.getByName("test").output.classesDirs
+    // The resolved files rather than the Configuration: the argument provider below is
+    // serialized into the configuration cache, which a Configuration cannot be.
+    val testRuntime = configurations.getByName("jvmTestRuntimeClasspath").incoming.files
+    val reportDir = layout.buildDirectory.dir("reports/pitest")
+    val sourceDirs = listOf("commonMain", "jvmMain").map { layout.projectDirectory.dir("src/$it/kotlin").asFile.path }
+    val mutators = providers.gradleProperty("pitestMutators").orElse("DEFAULTS")
+    val threshold = providers.gradleProperty("pitestThreshold").orElse("70")
+    classpath = pitest + mainClasses + testClasses + testRuntime
+    mainClass = "org.pitest.mutationtest.commandline.MutationCoverageReport"
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                "--classPath", (mainClasses + testClasses + testRuntime).joinToString(","),
+                "--mutableCodePaths", mainClasses.joinToString(","),
+                "--targetClasses", "com.benjaminearley.freer.*",
+                "--targetTests", "com.benjaminearley.freer.*",
+                "--sourceDirs", sourceDirs.joinToString(","),
+                "--reportDir", reportDir.get().asFile.path,
+                "--outputFormats", "HTML,XML,CSV",
+                "--timestampedReports", "false",
+                "--mutators", mutators.get(),
+                "--mutationThreshold", threshold.get(),
+                "--excludedMethods", "toString,hashCode,equals",
+                "--threads", "8",
+            )
+        },
+    )
+}
+
 // Lets JPMS consumers require the JVM jar under a stable module name.
 tasks.named<Jar>("jvmJar") {
     manifest {

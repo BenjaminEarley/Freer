@@ -151,6 +151,40 @@ public interface Effect<out R>
  * A pure, reusable description of a computation producing [A]. Build one with [program]
  * or [perform]/[flatMap], then apply handlers ([handle], [intercept], [handleS],
  * [interpret]) and extract the value with [runOrThrow] or [run].
+ *
+ * ## Thread safety
+ *
+ * A Program is immutable, and so is everything the library puts inside one: the
+ * continuations, the binds queued on them, the handlers applied so far and the captured
+ * bodies of `program { }` blocks. Building, combining and interpreting a program writes
+ * nothing to it and caches nothing in it, so one Program value, handled or not, may be
+ * shared between threads and interpreted by any number of them at the same time. It needs
+ * no synchronization of its own; publish it as you would any immutable object.
+ *
+ * Everything an interpretation needs it creates for itself when a terminal operation
+ * ([run], [runOrThrow], `io()`) forces the program: the coroutines behind the blocks and
+ * rule blocks it runs, one loop per applied handler with its continuation bookkeeping, and
+ * the state of every [handleS] and [interpretS], started afresh from the initial value. All
+ * of it belongs to that one interpretation and is discarded when it finishes; none of it is
+ * visible to another interpretation, so two threads interpreting one value get what they
+ * would get from two copies of it. An interpretation driven by `io()` may move between
+ * threads at every thunk, as its dispatcher decides, and stays confined all the same, since
+ * the dispatcher orders each hand-off.
+ *
+ * What is not confined is the code a program carries. Handler rules, [flatMap] functions,
+ * block bodies and `IO` thunks run on the interpreting thread, once per interpretation, and
+ * whatever they capture is shared by every interpretation of that program. A rule that
+ * mutates a captured counter, collection or map, or that mutates the initial state of a
+ * [handleS] in place instead of returning a new one, makes the program share mutable state,
+ * which then needs the synchronization any shared mutable state needs. State threaded by
+ * value through [handleS] or [interpretS] is confined.
+ *
+ * A continuation that outlives its interpretation, such as the `resume` of a yielded
+ * generator or a `resume` an [interpret] rule keeps for later, continues that interpretation
+ * on whichever thread invokes it, and is handed between threads like any other object. It
+ * is immutable data too: a multi-shot continuation may be resumed from several threads at
+ * once. The single-shot continuation of a block may not: its check catches a second
+ * resumption in sequence, not a concurrent one.
  */
 public sealed class Program<out A> {
     /** A finished program holding its final [value]; it performs no effects. */

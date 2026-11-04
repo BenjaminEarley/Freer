@@ -7,6 +7,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -47,5 +48,12 @@ class IoBlockingTest {
                 }.ioBlocking()
             }
         assertEquals("async boom", e.message)
+    }
+
+    @Test
+    fun ioBlockingNamesTheUnhandledEffectItMeets() {
+        val e = assertFailsWith<IllegalStateException> { perform(AskInt).ioBlocking() }
+        assertContains(e.message.orEmpty(), "AskInt")
+        assertContains(e.message.orEmpty(), "ioBlocking()")
     }
 }

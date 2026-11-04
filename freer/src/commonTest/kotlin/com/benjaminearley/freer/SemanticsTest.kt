@@ -117,6 +117,121 @@ class SemanticsTest {
     }
 
     @Test
+    fun runOrThrowNamesTheUnhandledEffect() {
+        val e = assertFailsWith<IllegalStateException> { askPlusOne().runOrThrow() }
+        assertContains(e.message.orEmpty(), "AskInt")
+    }
+
+    // A program whose continuation calls, once, the resume that the rule handling it has
+    // leaked: the rule is still running, so the call is a second direct resume made from
+    // inside the first, and what it hands back is the trampoline marker.
+    private fun reentrantContinuation(leaked: () -> (Any?) -> Program<Int>): Program<Int> {
+        var reentered = false
+        return perform(AskInt).flatMap { n ->
+            if (reentered) {
+                Program.Done(n)
+            } else {
+                reentered = true
+                leaked()(n)
+            }
+        }
+    }
+
+    @Test
+    fun aDirectResumeReenteredFromTheContinuationThrows() {
+        // Not a marker run as a program: one step behind the effect, the marker comes
+        // back as the resumed program itself.
+        var leaked: ((Any?) -> Program<Int>)? = null
+        assertContractViolation {
+            reentrantContinuation { leaked!! }
+                .interpret<Ask<*>, Int> { _, resume ->
+                    leaked = resume
+                    resume(1)
+                }.runOrThrow()
+        }
+        // Two steps: the marker comes out of the first step with another queued behind it.
+        assertContractViolation {
+            reentrantContinuation { leaked!! }
+                .map { it + 1 }
+                .interpret<Ask<*>, Int> { _, resume ->
+                    leaked = resume
+                    resume(1)
+                }.runOrThrow()
+        }
+    }
+
+    @Test
+    fun aDirectResumeReturnedByAnotherRuleThrows() {
+        // Not a lost continuation: the inner rule returns what the outer rule's direct
+        // resume gave it, so the inner loop sees a marker it never handed out.
+        var leaked: ((Any?) -> Program<Int>)? = null
+        var calls = 0
+        val prog = perform(AskInt).flatMap { n -> perform(Say("x")).map { n } }
+        assertContractViolation {
+            prog
+                .interpret<Out<*>, Int> { _, resume -> if (calls++ == 0) leaked!!(2) else resume(Unit) }
+                .interpret<Ask<*>, Int> { _, resume ->
+                    leaked = resume
+                    resume(1)
+                }.runOrThrow()
+        }
+    }
+
+    @Test
+    fun interpretSDetectsLeakedDirectResumesToo() {
+        var leaked: ((Any?) -> Program<Int>)? = null
+        assertContractViolation {
+            reentrantContinuation { leaked!! }
+                .interpretS<Ask<*>, Int, Int>(0) { s, _, resume ->
+                    leaked = { n -> resume(s, n) }
+                    resume(s, 1)
+                }.runOrThrow()
+        }
+        var calls = 0
+        val prog = perform(AskInt).flatMap { n -> perform(Say("x")).map { n } }
+        assertContractViolation {
+            prog
+                .interpretS<Out<*>, Int, Int>(0) { s, _, resume -> if (calls++ == 0) leaked!!(2) else resume(s, Unit) }
+                .interpret<Ask<*>, Int> { _, resume ->
+                    leaked = resume
+                    resume(1)
+                }.runOrThrow()
+        }
+    }
+
+    @Test
+    fun aContinuationResumedDirectlyMayBeResumedAgainAfterTheRun() {
+        // The contract limits direct calls to one. A continuation kept past the rule is a
+        // deferred one, and it still works after the direct call has run it once.
+        var kept: ((Any?) -> Program<Int>)? = null
+        val first =
+            askPlusOne()
+                .interpret<Ask<*>, Int> { _, resume ->
+                    kept = resume
+                    resume(1)
+                }.runOrThrow()
+        assertEquals(2, first)
+        assertEquals(11, kept!!(10).runOrThrow())
+
+        var keptS: ((Int, Any?) -> Program<Int>)? = null
+        val firstS =
+            askPlusOne()
+                .interpretS<Ask<*>, Int, Int>(0) { s, _, resume ->
+                    keptS = resume
+                    resume(s, 1)
+                }.runOrThrow()
+        assertEquals(2, firstS)
+        assertEquals(11, keptS!!(0, 10).runOrThrow())
+    }
+
+    @Test
+    fun ioNamesTheUnhandledEffectItMeets() {
+        val e = assertFailsWith<IllegalStateException> { runSync { askPlusOne().io() } }
+        assertContains(e.message.orEmpty(), "AskInt")
+        assertContains(e.message.orEmpty(), "io()")
+    }
+
+    @Test
     fun sameContractHoldsForInterpretS() {
         assertContractViolation {
             askPlusOne()
@@ -803,6 +918,30 @@ class SemanticsTest {
                 .collectAll()
                 .runOrThrow()
         assertEquals(listOf(1, 2, 3), result)
+    }
+
+    @Test
+    fun theMissingBindErrorNamesTheEffectByItsClass() {
+        val e =
+            assertFailsWith<IllegalStateException> {
+                perform(Say("hi")).handle<Out<*>, Unit> { Program.Done(Unit) }.runOrThrow()
+            }
+        assertContains(e.message.orEmpty(), "Rule for Say returned")
+    }
+
+    @Test
+    fun aProgramResponseIsRejectedForAnEffectWithoutASimpleName() {
+        // An anonymous effect class has no simple name, so the error names it by toString.
+        val effect =
+            object : Effect<Int> {
+                override fun toString() = "anonymous-effect"
+            }
+        val e =
+            assertFailsWith<IllegalStateException> {
+                perform(effect).handle<Effect<*>, Int> { Program.Done(1) }.runOrThrow()
+            }
+        assertContains(e.message.orEmpty(), effect::class.simpleName ?: effect.toString())
+        assertContains(e.message.orEmpty(), ".bind()")
     }
 
     @Test
