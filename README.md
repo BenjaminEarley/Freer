@@ -14,7 +14,7 @@ In a Kotlin Multiplatform project, add the library to `commonMain`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("com.benjaminearley:freer:0.1.0")
+            implementation("com.benjaminearley:freer:0.2.0")
         }
     }
 }
@@ -24,7 +24,7 @@ In a plain JVM project, Gradle resolves the JVM variant from the same coordinate
 
 ```kotlin
 dependencies {
-    implementation("com.benjaminearley:freer:0.1.0")
+    implementation("com.benjaminearley:freer:0.2.0")
 }
 ```
 
