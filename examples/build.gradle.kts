@@ -22,10 +22,11 @@ application {
 
 // The Kotlin blocks of the READMEs, the library's and freer-trace's, are compiled and run
 // rather than trusted. readmeSnippets copies every fenced ```kotlin block into a generated
-// source file, one package per block so that each may define its own main; the main source
-// set compiles them against both modules, and runReadme runs every block's main through a
-// generated entry point. check depends on it, so a README example that no longer compiles,
-// or no longer runs, fails CI.
+// source file. The blocks of one README share a package, so a later block may use what an
+// earlier one declared, and each block's main becomes blockN so that they coexist; an entry
+// point per README runs its blocks in order, and runReadme runs every README through one
+// more. check depends on it, so a README example that no longer compiles, or no longer runs,
+// fails CI.
 val readmeSnippets =
     tasks.register("readmeSnippets") {
         description = "Extracts the READMEs' Kotlin blocks into generated sources"
@@ -42,7 +43,6 @@ val readmeSnippets =
         doLast {
             val dir = outputDir.get().asFile
             dir.deleteRecursively()
-            val mains = mutableListOf<String>()
             for ((name, readme) in readmes) {
                 val blocks =
                     Regex("""(?ms)^```kotlin\n(.*?)^```$""")
@@ -50,18 +50,22 @@ val readmeSnippets =
                         .map { it.groupValues[1] }
                         .toList()
                 check(blocks.isNotEmpty()) { "${readme.asFile} has no fenced kotlin block" }
+                val runs = mutableListOf<String>()
                 blocks.forEachIndexed { index, code ->
                     val number = index + 1
-                    val packageName = "readme.$name.block$number"
-                    val file = dir.resolve("readme/$name/block$number/Block$number.kt")
+                    val main = Regex("""\bfun main\(\)""")
+                    val file = dir.resolve("readme/$name/Block$number.kt")
                     file.parentFile.mkdirs()
-                    file.writeText("package $packageName\n\n$code")
-                    if (Regex("""\bfun main\(\)""").containsMatchIn(code)) mains += "$packageName.main()"
+                    file.writeText("package readme.$name\n\n" + code.replace(main, "fun block$number()"))
+                    if (main.containsMatchIn(code)) runs += "block$number()"
                 }
+                check(runs.isNotEmpty()) { "No kotlin block of ${readme.asFile} defines main" }
+                dir.resolve("readme/$name/RunReadme.kt").writeText(
+                    "package readme.$name\n\nfun main() {\n" + runs.joinToString("") { "    $it\n" } + "}\n",
+                )
             }
-            check(mains.isNotEmpty()) { "No kotlin block of the READMEs defines main" }
             dir.resolve("readme/Run.kt").writeText(
-                "package readme\n\nfun main() {\n" + mains.joinToString("") { "    $it\n" } + "}\n",
+                "package readme\n\nfun main() {\n" + readmes.keys.joinToString("") { "    readme.$it.main()\n" } + "}\n",
             )
         }
     }
@@ -81,10 +85,10 @@ tasks.named("check") {
     dependsOn("runReadme")
 }
 
-// The trace README shows the diagrams its block prints. Its main runs with the output captured,
-// and every ```mermaid block of the README must appear in that output, so the shown diagrams
-// cannot drift from the code. A task class rather than a JavaExec, so that the captured output
-// is task-local and the task fits the configuration cache.
+// A README that shows diagrams shows what its blocks print. Its entry point runs with the
+// output captured, and every ```mermaid block of the README must appear in that output, so the
+// shown diagrams cannot drift from the code. A task class rather than a JavaExec, so that the
+// captured output is task-local and the task fits the configuration cache.
 abstract class CheckReadmeDiagrams : DefaultTask() {
     @get:Inject
     abstract val execOperations: ExecOperations
@@ -117,14 +121,22 @@ abstract class CheckReadmeDiagrams : DefaultTask() {
 
 tasks.register<CheckReadmeDiagrams>("checkReadmeDiagrams") {
     group = "verification"
+    description = "Checks that README.md shows the diagrams its blocks print"
+    classpath.from(sourceSets.main.get().runtimeClasspath)
+    mainClass = "readme.core.RunReadmeKt"
+    readme = rootProject.layout.projectDirectory.file("README.md")
+}
+
+tasks.register<CheckReadmeDiagrams>("checkTraceReadmeDiagrams") {
+    group = "verification"
     description = "Checks that the trace README shows the diagrams its block prints"
     classpath.from(sourceSets.main.get().runtimeClasspath)
-    mainClass = "readme.trace.block1.Block1Kt"
+    mainClass = "readme.trace.RunReadmeKt"
     readme = rootProject.layout.projectDirectory.file("freer-trace/README.md")
 }
 
 tasks.named("check") {
-    dependsOn("checkReadmeDiagrams")
+    dependsOn("checkReadmeDiagrams", "checkTraceReadmeDiagrams")
 }
 
 // README.md of this module shows the diagrams of the diagrams scenario, which GitHub renders.

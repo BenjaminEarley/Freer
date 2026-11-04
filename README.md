@@ -51,7 +51,55 @@ fun main() {
 }
 ```
 
-CI compiles and runs this block.
+CI runs these blocks and checks the diagrams they print.
+
+<details>
+<summary>The greeter traced, explored and drawn with freer-trace</summary>
+
+The same program under the JVM-only `com.benjaminearley:freer-trace` artifact: one run observed between the greeter and the scripted handler, then every path of the greeter under two names.
+
+```kotlin
+import com.benjaminearley.freer.runOrThrow
+import com.benjaminearley.freer.trace.*
+import com.benjaminearley.freer.trace.mermaid.flowchart
+import com.benjaminearley.freer.trace.mermaid.sequenceDiagram
+
+fun main() {
+    val trace = Trace(last = "scripted")
+    greeter.observed("program", trace).scripted("Ada", mutableListOf()).runOrThrow()
+    println(trace.sequenceDiagram())
+    println(greeter.tree { ofType<String>("Ada", "Bob") }.flowchart())
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant program
+    participant scripted
+    program->>+scripted: Print(line=What is your name?)
+    scripted-->>-program: Unit
+    program->>+scripted: ReadLine
+    scripted-->>-program: Ada
+    program->>+scripted: Print(line=Hello, Ada!)
+    scripted-->>-program: Unit
+```
+
+```mermaid
+flowchart TD
+    n0["Print(line=What is your name?)"]
+    n0 --> n1
+    n1["ReadLine"]
+    n1 -- "Ada" --> n2
+    n2["Print(line=Hello, Ada!)"]
+    n2 --> n3
+    n3(["returns Ada"])
+    n1 -- "Bob" --> n4
+    n4["Print(line=Hello, Bob!)"]
+    n4 --> n5
+    n5(["returns Bob"])
+```
+
+</details>
 
 ## Core Concepts
 
@@ -65,7 +113,7 @@ CI compiles and runs this block.
 | `interpret` | the effect and `resume`, the rest of the program as a value | abort, multi-shot, generators |
 | `interpretS` | the state, the effect and `resume(state, response)` | stateful control flow |
 
-Built-in effects, in `com.benjaminearley.freer.effects`: `State`, `Reader`, `Failure` (`raise`, `attempt`, `recover`), `NonDet` (multi-shot `choose`, `msplit`, `once`, `ifte`), generators and `IO` (`performIO`, run at the edge by `io()` or `ioBlocking()`). Their KDoc says how to order them and what is not type-checked.
+Built-in effects, in `com.benjaminearley.freer.effects`: `State`, `Reader`, `Failure` (`raise`, `attempt`, `recover`), `NonDet` (multi-shot `choose`, `msplit`, `once`, `ifte`), generators and `IO` (`performIO`, run at the edge by `io()` or `ioBlocking()`). Their KDoc says how to order them and what is unchecked.
 
 ## Semantics
 
@@ -79,7 +127,7 @@ Per effect, with JMH on the v0.2.0 code, JDK 21, Apple silicon (`freer/src/jvmBe
 
 - `freer/` is the library: common code in `src/commonMain/`, tests in `src/commonTest/` (`reference/`, `laws/`) and `src/jvmTest/`, JMH in `src/jvmBenchmark/`, API dumps in `api/`.
 - [`freer-trace/`](freer-trace/README.md) is the trace module: trace and tree of a program, replay, text form, Mermaid renderers, laws against the reference model.
-- `examples/` is a JVM demo of middleware, async I/O, error handling, generators, nondeterminism, transactions and [Mermaid diagrams](examples/README.md) of a program (`./gradlew :examples:run`).
+- `examples/` is a JVM demo of middleware, async I/O, error handling, generators, nondeterminism, transactions and [Mermaid diagrams](examples/README.md) (`./gradlew :examples:run`).
 - `jcstress/` stress-tests shared programs across threads.
 - `.github/workflows/` runs CI on Linux, macOS and Windows, publishes the API reference and releases from tags.
 
