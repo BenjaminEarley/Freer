@@ -272,20 +272,21 @@ tasks.named<Jar>("jvmJar") {
 // intercept rule, and the dumps record parameters by type only.
 tasks.register("checkReadmeIdentifiers") {
     group = "verification"
-    description = "Checks that every backticked identifier in README.md is declared in api/"
+    description = "Checks that every backticked identifier in the READMEs is declared in the API dumps"
     // Locals rather than script-level values: the action below is serialized into the
     // configuration cache, which cannot hold a reference to the script.
-    val readme = rootProject.layout.projectDirectory.file("README.md")
-    val apiDumps = layout.projectDirectory.dir("api")
-    inputs.file(readme)
-    inputs.dir(apiDumps)
+    val readmes = listOf(rootProject.layout.projectDirectory.file("README.md"), rootProject.layout.projectDirectory.file("freer-trace/README.md"))
+    val apiDumps = listOf(layout.projectDirectory.dir("api"), rootProject.layout.projectDirectory.dir("freer-trace/api"))
+    inputs.files(readmes)
+    apiDumps.forEach { inputs.dir(it) }
     doLast {
         val declared = mutableSetOf("proceed")
-        val packageName = Regex("""com[./]benjaminearley[./]freer(?:[./]effects)?""")
-        val qualified = Regex("""com[./]benjaminearley[./]freer(?:[./]effects)?[/.$]([A-Za-z_][\w$.]*)""")
+        // A package segment is lowercase and followed by another separator; the name is what follows the last one.
+        val packageName = Regex("""com[./]benjaminearley[./]freer(?:[./][a-z][a-z0-9]*(?=[./]))*""")
+        val qualified = Regex("""com[./]benjaminearley[./]freer(?:[./][a-z][a-z0-9]*(?=[./]))*[/.$]([A-Za-z_][\w$.]*)""")
         val jvmFunction = Regex("""\bfun ([A-Za-z_]\w*) \(""")
         val accessor = Regex("""^(?:get|is)([A-Z])(\w*)$""")
-        apiDumps.asFileTree.forEach { dump ->
+        apiDumps.flatMap { it.asFileTree }.forEach { dump ->
             val text = dump.readText()
             packageName.findAll(text).forEach { match -> declared += match.value.split('.', '/') }
             qualified.findAll(text).forEach { match -> declared += match.groupValues[1].split('$', '.') }
@@ -296,20 +297,22 @@ tasks.register("checkReadmeIdentifiers") {
                 accessor.find(name)?.let { declared += it.groupValues[1].lowercase() + it.groupValues[2] }
             }
         }
-        val prose = readme.asFile.readText().replace(Regex("""(?s)```.*?```"""), "")
         val identifier = Regex("""^\.?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?:<.*>)?(?:\(\))?(?: \{ \})?$""")
         val fileName = Regex("""\.(kt|kts|hs|md|api|yml)$""")
-        val missing =
-            Regex("`([^`]+)`")
-                .findAll(prose)
-                .map { it.groupValues[1] }
-                .filterNot { span -> fileName.containsMatchIn(span) }
-                .mapNotNull { span -> identifier.find(span)?.groupValues?.get(1) }
-                .flatMap { name -> name.split('.') }
-                .filterNot { name -> name in declared }
-                .distinct()
-                .toList()
-        check(missing.isEmpty()) { "README.md names identifiers the API dumps in api/ do not declare: $missing" }
+        for (readme in readmes) {
+            val prose = readme.asFile.readText().replace(Regex("""(?s)```.*?```"""), "")
+            val missing =
+                Regex("`([^`]+)`")
+                    .findAll(prose)
+                    .map { it.groupValues[1] }
+                    .filterNot { span -> fileName.containsMatchIn(span) }
+                    .mapNotNull { span -> identifier.find(span)?.groupValues?.get(1) }
+                    .flatMap { name -> name.split('.') }
+                    .filterNot { name -> name in declared }
+                    .distinct()
+                    .toList()
+            check(missing.isEmpty()) { "${readme.asFile} names identifiers the API dumps do not declare: $missing" }
+        }
     }
 }
 

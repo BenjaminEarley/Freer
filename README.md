@@ -78,7 +78,7 @@ Per effect, with JMH on the v0.2.0 code, JDK 21, Apple silicon (`freer/src/jvmBe
 ## Project layout
 
 - `freer/` is the library: common code in `src/commonMain/`, tests in `src/commonTest/` (`reference/`, `laws/`) and `src/jvmTest/`, JMH in `src/jvmBenchmark/`, API dumps in `api/`.
-- `freer-trace/` is the trace module: trace and tree of a program, replay, text form, Mermaid renderers, laws against the reference model.
+- [`freer-trace/`](freer-trace/README.md) is the trace module: trace and tree of a program, replay, text form, Mermaid renderers, laws against the reference model.
 - `examples/` is a JVM demo of middleware, async I/O, error handling, generators, nondeterminism, transactions and [Mermaid diagrams](examples/README.md) of a program (`./gradlew :examples:run`).
 - `jcstress/` stress-tests shared programs across threads.
 - `.github/workflows/` runs CI on Linux, macOS and Windows, publishes the API reference and releases from tags.
