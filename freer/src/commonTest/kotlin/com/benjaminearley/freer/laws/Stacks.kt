@@ -143,9 +143,9 @@ private fun Random.wrapper(): Handler =
 class Stack(
     val handlers: List<Handler>,
 ) {
-    fun applyLib(program: Program<*>): Program<Any?> = handlers.fold(program as Program<Any?>) { acc, handler -> handler.lib(acc) }
+    fun applyLib(program: Program<*>): Program<Any?> = handlers.fold<Handler, Program<Any?>>(program) { acc, handler -> handler.lib(acc) }
 
-    fun applyRef(program: Ref<*>): Ref<Any?> = handlers.fold(program as Ref<Any?>) { acc, handler -> handler.ref(acc) }
+    fun applyRef(program: Ref<*>): Ref<Any?> = handlers.fold<Handler, Ref<Any?>>(program) { acc, handler -> handler.ref(acc) }
 
     fun insert(
         at: Int,
