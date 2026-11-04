@@ -4,4 +4,5 @@ plugins {
     alias(libs.plugins.maven.publish) apply false
     alias(libs.plugins.kotlin.allopen) apply false
     alias(libs.plugins.kotlinx.benchmark) apply false
+    alias(libs.plugins.dokka) apply false
 }

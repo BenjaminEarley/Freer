@@ -45,6 +45,76 @@ jobs:
         timeout-minutes: 15
         run: ./gradlew :freer:pitest
 
+  # The API reference: the KDoc of main, rendered by Dokka and published to GitHub Pages.
+  # The README links to it, so the README job below waits for this one.
+  pages:
+    name: API reference (Dokka to GitHub Pages)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Render the KDoc
+        timeout-minutes: 20
+        run: ./gradlew :freer:dokkaGenerate
+
+      # Enables Pages with the Actions build type on first use, if the token is allowed to.
+      - uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: freer/build/dokka/html
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
+
+  # The README's structure and links. Its code block and the API names it uses are checked
+  # by `check` in the Linux job (:examples:runReadme and :freer:checkReadmeIdentifiers).
+  readme:
+    name: README (markdownlint, links)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pages
+    if: ${{ !cancelled() && (needs.pages.result == 'success' || needs.pages.result == 'skipped') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DavidAnson/markdownlint-cli2-action@v25
+        with:
+          globs: README.md
+
+      # The ACM Digital Library, behind doi.org, answers link checkers with 403.
+      - uses: lycheeverse/lychee-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          args: --no-progress --exclude doi.org README.md
+
   macos:
     name: macOS (macOS and iOS simulator tests, all Apple targets)
     runs-on: macos-latest

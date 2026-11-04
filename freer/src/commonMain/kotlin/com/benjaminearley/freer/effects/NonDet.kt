@@ -1,26 +1,3 @@
-/*
- * Nondeterminism: multi-shot continuations.
- *
- * choose(options) suspends on a Choose effect; the collectAll handler resumes
- * the SAME captured continuation once per option and concatenates the results.
- * Resuming a continuation more than once is impossible with one-shot suspend
- * coroutines — it works here because the continuation is an immutable Pipeline
- * value that can be replayed.
- *
- * program { } blocks and the rule blocks of handle, intercept and handleS are
- * one-shot coroutines, so one fails under these handlers only when its OWN
- * continuation is resumed more than once: the block binds the choice itself,
- * proceeds on it, or binds a sub-program that performs it. A program { } created
- * inside a flatMap closure after the choice is fine (each branch gets a fresh
- * one), as is a rule that answers without suspending, or middleware on an
- * unrelated effect.
- *
- * Three consequences worth knowing: d sequential choices of s options explore
- * s^d branches — there is no implicit pruning. A stateful handler applied inside
- * collectAll backtracks its state per branch; applied outside, one global state
- * threads across all branches. And recover inside collectAll recovers a failed
- * branch in isolation; outside, one failed branch replaces the entire collection.
- */
 @file:Suppress("UNCHECKED_CAST")
 
 package com.benjaminearley.freer.effects
@@ -33,8 +10,27 @@ import com.benjaminearley.freer.perform
 import com.benjaminearley.freer.program
 
 /**
- * Nondeterminism: handled by [collectAll] or [msplit], which resume the same
- * continuation once per option.
+ * Nondeterminism: multi-shot continuations. [choose] suspends on a [Choose] effect, and
+ * the [collectAll] handler resumes the same captured continuation once per option and
+ * concatenates the results. Resuming a continuation more than once is impossible with
+ * one-shot suspend coroutines; it works here because the continuation is an immutable
+ * value that can be replayed. [guard] prunes a branch, [orElse] is a binary choice, and
+ * [msplit], [once] and [ifte] give committed choice: the first answer with the rest of
+ * the search as a program, the first answer only, and a soft cut.
+ *
+ * `program { }` blocks and the rule blocks of `handle`, `intercept` and `handleS` are
+ * one-shot coroutines, so one fails under these handlers only when its own continuation
+ * is resumed more than once: the block binds the choice itself, proceeds on it, or binds
+ * a sub-program that performs it. A block created inside a [flatMap] closure after the
+ * choice is fine, since each branch gets a fresh one, as is a rule that answers without
+ * suspending, or middleware on an unrelated effect; [local] and [transactional] are
+ * built this way and work under [collectAll].
+ *
+ * Three consequences worth knowing: d sequential choices of s options explore s^d
+ * branches, with no implicit pruning. A stateful handler applied inside [collectAll]
+ * backtracks its state per branch; applied outside, one global state threads across all
+ * branches. And [recover] inside [collectAll] recovers a failed branch in isolation;
+ * outside, one failed branch replaces the entire collection.
  */
 public sealed interface NonDet<out R> : Effect<R> {
     /** Continue once for each of [options], in order; no options prunes the branch. */

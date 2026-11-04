@@ -57,7 +57,15 @@ public fun <A> Program<A>.transactional(): Program<A> =
         }
     }
 
-/** A single mutable cell, read with [getState] and written with [putState]. */
+/**
+ * A single mutable cell: read with [getState], written with [putState] and [modifyState],
+ * handled by [runState] or [runStateWithFinal], and scoped by [transactional].
+ *
+ * The state type is erased: [Get] is declared over `Any?`, so [getState] casts to the
+ * type its caller names and no handler can check it, and a handler stack carries one
+ * state type (a second type needs a second effect class). Call sites often need the type
+ * argument spelled out, as in `getState<Int>()` or `modifyState { n: Int -> n + 1 }`.
+ */
 public sealed interface State<out R> : Effect<R> {
     /** Read the current state. */
     public data object Get : State<Any?>

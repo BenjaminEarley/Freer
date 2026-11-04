@@ -148,6 +148,63 @@ public interface Effect<out R>
  * or [perform]/[flatMap], then apply handlers ([handle], [intercept], [handleS],
  * [interpret]) and extract the value with [runOrThrow] or [run].
  *
+ * A program performs effects; it does not execute them. Each handler applied to it answers
+ * one effect family and returns a new program, still a description, with those effects
+ * gone. Nothing runs until [run], [runOrThrow] or an edge runner such as `io()` forces the
+ * result, and forcing changes nothing, so one value can be interpreted any number of
+ * times, under different handler stacks.
+ *
+ * ## When to use it
+ *
+ * Take a refund flow: load the order, call the payment provider, write a ledger entry,
+ * notify the customer. As a program it is one value, and the caller decides how it runs.
+ * Production applies the real handlers. A test applies an in-memory store and a scripted
+ * provider that fails on the second call, then asserts on the exact sequence of effects
+ * performed, with no mocking framework and no interfaces to maintain. A dry run swaps in a
+ * handler that returns a planned provider reference without calling anyone and collects
+ * the ledger write instead of executing it, so the entry that would have been written
+ * comes back as data. An audit is an [intercept] applied in production only, logging every
+ * provider call before proceeding, which the refund code never learns about. Rollback
+ * policy is a call-site choice: handle failures outside the ledger handler and a failed
+ * notification rolls the write back, handle them inside and the write survives.
+ *
+ * A `suspend` function with injected dependencies gives the first two. The rest need flags
+ * and wrappers threaded through every call, or cannot be expressed at all, because a
+ * `suspend` function's effects happen as it runs and cannot be reordered or withheld
+ * afterwards. A program is pure overhead for tight loops over millions of trivial effects,
+ * or for code that only needs sequencing; its place is a flow with a handful of effects
+ * per run that must be tested, previewed, audited or replayed.
+ *
+ * ## Handlers
+ *
+ * A handler dispatches on the erased class of the effect: `handle<Fetch<String>, A>` also
+ * matches a `Fetch<Int>`, and the mismatch surfaces as a `ClassCastException` where the
+ * value is used, so handle the star-projected family (`Fetch<*>`). Responses are not
+ * checked against the effect's declared response type either: nothing ties a rule's return
+ * value to it, and a wrong response fails at the value's use site. The one response the
+ * handlers reject at once is a Program returned from [handle], [intercept] or [handleS],
+ * usually a sub-program missing its `.bind()`; [interpret] is the form for a rule that
+ * means to return a program. Watch for rules whose last expression is not the intended
+ * response, such as a collection mutator returning `Boolean` for a `Unit` effect.
+ *
+ * Handlers are applied inside out: the handler applied first sees an effect first, and an
+ * effect that a handler performs itself (a logging [intercept], a fallback of
+ * [recover][com.benjaminearley.freer.effects.recover]) is seen only by the handlers applied
+ * after it. Where handlers interact, their order decides the semantics; the KDoc of
+ * [attempt][com.benjaminearley.freer.effects.attempt] and
+ * [transactional][com.benjaminearley.freer.effects.transactional] gives the cases.
+ *
+ * ## Exceptions
+ *
+ * Exceptions are not part of the model. An exception thrown while a program is evaluated,
+ * by a handler rule, an `IO` thunk, a [program] block or a [flatMap] function, propagates
+ * straight out of the interpretation: a `try` around a `.bind()` inside a block cannot
+ * catch it, `finally` blocks in the abandoned program do not run, and [run] does not catch
+ * it either, since its `Result` captures only an unhandled effect. Recoverable failures are
+ * effects: [raise][com.benjaminearley.freer.effects.raise],
+ * [attempt][com.benjaminearley.freer.effects.attempt] and
+ * [recover][com.benjaminearley.freer.effects.recover].
+ *
  * ## Thread safety
  *
  * A Program is immutable, and so is everything the library puts inside one: the

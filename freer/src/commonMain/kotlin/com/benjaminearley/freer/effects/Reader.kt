@@ -1,13 +1,3 @@
-/*
- * A Reader effect: ask for a value from the environment.
- *
- * local() overrides the environment for one sub-program: it asks downstream once
- * for the current value, then answers every Ask inside the sub-program itself with
- * the transformed value, so those Asks never reach the downstream handler. Asks
- * outside the sub-program are untouched and still get the downstream answer. Both
- * steps are plain flatMap and a direct resume, so local() also works under a
- * multi-shot handler such as collectAll.
- */
 @file:Suppress("UNCHECKED_CAST")
 
 package com.benjaminearley.freer.effects
@@ -18,7 +8,21 @@ import com.benjaminearley.freer.flatMap
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
-/** A read-only environment: handled by [runReader], overridden locally by [local]. */
+/**
+ * A read-only environment: [ask] reads it, [runReader] supplies it, [local] overrides it
+ * for one sub-program.
+ *
+ * The environment type is erased: [Reader.Ask] is declared over `Any?`, so [ask] casts to
+ * the type its caller names and no handler can check it, and a handler stack carries one
+ * environment type (a second type needs a second effect class). Call sites often need the
+ * type argument spelled out, as in `ask<String>()`.
+ *
+ * [local] asks downstream once for the current value, then answers every Ask inside the
+ * sub-program itself with the transformed value, so those Asks never reach the downstream
+ * handler; Asks outside the sub-program still get the downstream answer. Both steps are a
+ * plain [flatMap] and a direct resume, so [local] also works under a multi-shot handler
+ * such as [collectAll].
+ */
 public sealed interface Reader<out R> : Effect<R> {
     /** Read the environment. */
     public data object Ask : Reader<Any?>

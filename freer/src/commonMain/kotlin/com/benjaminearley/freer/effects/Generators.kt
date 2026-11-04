@@ -1,11 +1,3 @@
-/*
- * Generators: reifying the continuation as data.
- *
- * The generator() handler turns a program that performs Yield effects into a
- * Generator value: either Finished with the result, or Yielded holding the value and
- * the rest of the program as a callable continuation. The driver decides when
- * (and whether) to resume — the suspended program is just data in between.
- */
 @file:Suppress("UNCHECKED_CAST")
 
 package com.benjaminearley.freer.effects
@@ -15,7 +7,21 @@ import com.benjaminearley.freer.Program
 import com.benjaminearley.freer.interpret
 import com.benjaminearley.freer.perform
 
-/** Generator output: handled by [generator]. */
+/**
+ * Generator output: [yieldValue] performs a [Yield], and the [generator] handler reifies
+ * the continuation as data. The program becomes a [Generator] value: [Generator.Finished]
+ * with the result, or [Generator.Yielded] holding the value and the rest of the program
+ * as a callable continuation. The driver decides when, and whether, to resume; in between,
+ * the suspended program is just data:
+ *
+ * ```
+ * var step = countdown.generator<Int, String>().runOrThrow()
+ * while (step is Generator.Yielded) {
+ *     println(step.value)
+ *     step = step.resume().runOrThrow()
+ * }
+ * ```
+ */
 public sealed interface Emit<out R> : Effect<R> {
     /** Hand [value] to the driver and pause until it resumes the generator. */
     public class Yield<out T> internal constructor(

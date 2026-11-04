@@ -37,7 +37,16 @@ public fun <A> Program<A>.recover(fallback: (String) -> Program<A>): Program<A> 
         }
     }
 
-/** Failure: handled by [attempt] or [recover]. */
+/**
+ * Failure as an effect: [raise] performs a [Raise], [attempt] materializes the outcome as
+ * a `Result`, and [recover] replaces the failed program with a fallback. The names follow
+ * Arrow's for the same operations.
+ *
+ * Handler order decides what a failure undoes: [attempt] applied before a stateful handler
+ * keeps the state written before the failure, applied after it rolls the whole result
+ * back. Transactional behaviour is a call-site choice, not a handler feature; see
+ * [transactional] for a scoped version.
+ */
 public sealed interface Failure<out R> : Effect<R> {
     /** Fail with [reason]; never answered, so the program does not continue past it. */
     public class Raise internal constructor(

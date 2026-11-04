@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.kotlin.allopen)
     alias(libs.plugins.kotlinx.benchmark)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.dokka)
     signing
 }
 
@@ -78,7 +79,10 @@ signing {
 kotlin {
     explicitApi()
 
-    // Checks the public API of the JVM jar and of every klib target against the dumps in api/.
+    // Checks the public API of the JVM jar and of every klib target against the dumps in api/,
+    // as part of `check` (task checkKotlinAbi). The build is in explicit API mode, so every
+    // public declaration carries its visibility and return type. After an intentional API
+    // change, run `./gradlew updateKotlinAbi` and commit the updated dumps with the change.
     abiValidation()
 
     jvmToolchain(17)
@@ -136,6 +140,19 @@ kotlin {
     }
 }
 
+// The API reference: `./gradlew :freer:dokkaGenerate` writes build/dokka/html, which CI
+// publishes to GitHub Pages from main. Every declaration links to its source on GitHub.
+dokka {
+    moduleName = "freer"
+    dokkaSourceSets.configureEach {
+        sourceLink {
+            localDirectory = layout.projectDirectory.dir("src")
+            remoteUrl("https://github.com/BenjaminEarley/Freer/tree/main/freer/src")
+            remoteLineSuffix = "#L"
+        }
+    }
+}
+
 // One forked JVM per benchmark, with the same warm-up and measurement as the annotations on
 // the benchmark classes, so that `./gradlew :freer:jvmBenchmark` and running the jar from
 // `jvmBenchmarkJar` by hand (for example with `-prof gc`) measure the same thing.
@@ -184,8 +201,20 @@ afterEvaluate {
 // the main output of the JVM target; the tests are the JVM test classes, which kotlin-test
 // runs under JUnit 4 on the JVM. toString, hashCode and equals are left alone: nothing but
 // a debug string depends on them, so a mutant there would only ever be junk. The run fails
-// below the score threshold; the README's Semantics section explains the number.
-// -PpitestMutators=ALL runs the full set, -PpitestThreshold=N overrides the bar.
+// below the score threshold. -PpitestMutators=ALL runs the full set, -PpitestThreshold=N
+// overrides the bar.
+//
+// The bar is set just under the score the tests reach, so that a test that stops detecting
+// a mutant fails the build. Of the 239 mutants the default operators make in FFree.kt,
+// ProgramDsl.kt and the built-in handlers (at v0.2.0), the tests detect 164. Each of the 75
+// that survive is one of: a Kotlin compiler artifact (null-check intrinsics on casts,
+// coroutine state machines, the never-executed originals of inline functions); a fast path
+// equivalent to the path it skips (among them the identity checks by which the loops
+// recognise a returned continuation); a null branch or a defensive branch the interpreter's
+// invariants make unreachable; an unused accessor; one of three guards that only a data
+// race can observe, covered by the JCStress tests instead; or a Pitest artefact whose
+// hand-applied mutation does fail its test. None is a behaviour the tests leave open. The
+// full operator set makes 1162 mutants, of which 881 are detected.
 val pitest: Configuration by configurations.creating
 
 dependencies {
@@ -232,4 +261,58 @@ tasks.named<Jar>("jvmJar") {
     manifest {
         attributes("Automatic-Module-Name" to "com.benjaminearley.freer")
     }
+}
+
+// The README names the public API in backticks, and every such name must exist in the dumps
+// in api/: a rename or a removal then fails `check` instead of leaving a stale name in the
+// front door. Only identifier-shaped spans are checked (a dotted name, optionally with type
+// arguments, empty parentheses or a trailing block); paths, coordinates, commands and file
+// names are left alone, as are the fenced code blocks, which the examples module compiles
+// and runs. `proceed` is the one name the dumps cannot carry: it is a parameter of the
+// intercept rule, and the dumps record parameters by type only.
+tasks.register("checkReadmeIdentifiers") {
+    group = "verification"
+    description = "Checks that every backticked identifier in README.md is declared in api/"
+    // Locals rather than script-level values: the action below is serialized into the
+    // configuration cache, which cannot hold a reference to the script.
+    val readme = rootProject.layout.projectDirectory.file("README.md")
+    val apiDumps = layout.projectDirectory.dir("api")
+    inputs.file(readme)
+    inputs.dir(apiDumps)
+    doLast {
+        val declared = mutableSetOf("proceed")
+        val packageName = Regex("""com[./]benjaminearley[./]freer(?:[./]effects)?""")
+        val qualified = Regex("""com[./]benjaminearley[./]freer(?:[./]effects)?[/.$]([A-Za-z_][\w$.]*)""")
+        val jvmFunction = Regex("""\bfun ([A-Za-z_]\w*) \(""")
+        val accessor = Regex("""^(?:get|is)([A-Z])(\w*)$""")
+        apiDumps.asFileTree.forEach { dump ->
+            val text = dump.readText()
+            packageName.findAll(text).forEach { match -> declared += match.value.split('.', '/') }
+            qualified.findAll(text).forEach { match -> declared += match.groupValues[1].split('$', '.') }
+            jvmFunction.findAll(text).forEach { match ->
+                val name = match.groupValues[1]
+                declared += name
+                // A JVM accessor stands for a Kotlin property: getValue for value.
+                accessor.find(name)?.let { declared += it.groupValues[1].lowercase() + it.groupValues[2] }
+            }
+        }
+        val prose = readme.asFile.readText().replace(Regex("""(?s)```.*?```"""), "")
+        val identifier = Regex("""^\.?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?:<.*>)?(?:\(\))?(?: \{ \})?$""")
+        val fileName = Regex("""\.(kt|kts|hs|md|api|yml)$""")
+        val missing =
+            Regex("`([^`]+)`")
+                .findAll(prose)
+                .map { it.groupValues[1] }
+                .filterNot { span -> fileName.containsMatchIn(span) }
+                .mapNotNull { span -> identifier.find(span)?.groupValues?.get(1) }
+                .flatMap { name -> name.split('.') }
+                .filterNot { name -> name in declared }
+                .distinct()
+                .toList()
+        check(missing.isEmpty()) { "README.md names identifiers the API dumps in api/ do not declare: $missing" }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("checkReadmeIdentifiers")
 }

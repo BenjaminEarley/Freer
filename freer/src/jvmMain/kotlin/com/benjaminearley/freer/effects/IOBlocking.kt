@@ -14,8 +14,10 @@ import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
 /**
  * JVM-only blocking edge runner for interceptor-free contexts (a plain main, a thread
  * you own): runs every IO thunk and returns the final value, blocking the caller while
- * a thunk is suspended. Every interpretation step stays on the calling thread, so
- * handler state needs no synchronization. Apply it after all other handlers.
+ * a thunk is suspended. Every interpretation step stays on the calling thread; a thunk
+ * may hop threads internally, but its result is handed back before interpretation
+ * continues, so handler state needs no synchronization. Apply it after all other
+ * handlers, so that only IO effects remain; any other effect left fails naming itself.
  */
 public fun <A> Program<A>.ioBlocking(): A {
     // Each thunk is started in place; if it suspends, the caller blocks until the

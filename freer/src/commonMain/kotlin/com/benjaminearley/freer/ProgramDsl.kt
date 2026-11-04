@@ -185,7 +185,20 @@ private fun programResponseError(effect: Any): Nothing {
     )
 }
 
-/** Interpret with auto-resume: the block's return value is the effect's response. */
+/**
+ * Interpret with auto-resume: the block's return value is the effect's response. For an
+ * effect that returns `Unit`, do the work; for one that returns a value, return it. The
+ * block may bind other programs, which run in place of the effect as in a [program] block,
+ * so a rule that translates its effect into I/O binds a `performIO { }`. The block is a
+ * one-shot coroutine: under a multi-shot handler such as `collectAll`, a block that binds
+ * the choice fails when resumed a second time, while one that returns without suspending
+ * is fine.
+ *
+ * The response is not checked against the effect's declared type, except that a [Program]
+ * is rejected at once with an `IllegalStateException` naming the effect, since it almost
+ * always means a sub-program was returned without its `.bind()`. Applied lazily, when the
+ * program is run.
+ */
 public inline fun <reified E : Effect<*>, A> Program<A>.handle(noinline rule: suspend ProgramScope.(E) -> Any?): Program<A> =
     handleWith(E::class, rule)
 
@@ -215,9 +228,21 @@ private class Proceed(
 }
 
 /**
- * Middleware (the paper's interpose): observe an effect without consuming it. proceed()
- * re-emits the effect to a downstream handler and returns its response — call it where
- * the effect should execute, and rewrite (or skip) the result as needed.
+ * Middleware: observe an effect without consuming it. `proceed()` re-emits the effect to
+ * the handler downstream and returns its response, so the rule decides where the effect
+ * executes and may inspect, rewrite or replace the result; a rule that answers without
+ * calling `proceed()` consumes the effect. Effects the rule performs itself are seen only
+ * by the handlers applied after this one, so a middleware that logs needs the log handler
+ * downstream of it.
+ *
+ * Each intercepted effect is handled twice, and the rule's coroutine is parked in between,
+ * which costs a few times a plain [handle]; keep it off hot paths. The cheaper form, and
+ * the one that works under a multi-shot handler, is an [interpret] rule that re-emits the
+ * effect and continues from a [flatMap]:
+ * `interpret<NonDet<*>, A> { op, resume -> perform(op).flatMap { resume(it) } }`. Under a
+ * multi-shot handler an intercept on the same effect fails, because `proceed()` suspends
+ * the one-shot rule block and the downstream handler resumes it once per option; an
+ * intercept on an unrelated effect is fine. Applied lazily, when the program is run.
  */
 public inline fun <reified E : Effect<*>, A> Program<A>.intercept(
     noinline rule: suspend ProgramScope.(effect: E, proceed: suspend ProgramScope.() -> Any?) -> Any?,
@@ -238,7 +263,10 @@ internal fun <E : Effect<*>, A> Program<A>.interceptWith(
 /**
  * Stateful [handle]: the block receives the current state and returns `newState to response`.
  * Mind the pair order when the state and the response share a type — `response to newState`
- * is equally well-typed and silently swaps the two.
+ * is equally well-typed and silently swaps the two. The state is threaded by value, so each
+ * interpretation starts from [initialState] and shares nothing with another; a rule that
+ * mutates the initial state in place instead of returning a new one shares it between
+ * every interpretation of the program.
  */
 public inline fun <reified E : Effect<*>, S, A> Program<A>.handleS(
     initialState: S,

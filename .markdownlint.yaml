@@ -1,0 +1,3 @@
+# markdownlint rules for README.md, run by CI and by `npx markdownlint-cli2 README.md`.
+# Line length is not limited: the prose keeps one sentence per line unwrapped.
+MD013: false
