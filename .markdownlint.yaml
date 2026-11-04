@@ -1,3 +1,6 @@
-# markdownlint rules for README.md, run by CI and by `npx markdownlint-cli2 README.md`.
+# markdownlint rules for the READMEs, run by CI and by `npx markdownlint-cli2 README.md`.
 # Line length is not limited: the prose keeps one sentence per line unwrapped.
 MD013: false
+# Inline HTML only for the expander that hides a block's printed diagrams.
+MD033:
+  allowed_elements: [details, summary]

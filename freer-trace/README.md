@@ -6,7 +6,7 @@ API reference (KDoc): [benjaminearley.github.io/Freer/freer-trace](https://benja
 
 ## Installation
 
-Add `implementation("com.benjaminearley:freer-trace:0.3.0")` to a JVM module, JVM 11 or later. It brings `freer` and kotlin-reflect, which reads response types from Kotlin's metadata.
+Add `implementation("com.benjaminearley:freer-trace:0.3.0")` to a JVM module, JVM 11 or later. It brings `freer` and kotlin-reflect, for response types.
 
 ## Quick Example
 
@@ -56,30 +56,56 @@ fun main() {
 }
 ```
 
-CI compiles and runs this block.
+CI compiles and runs this block and checks that it prints the diagrams below.
+
+<details>
+<summary>Printed diagrams</summary>
+
+```mermaid
+sequenceDiagram
+    participant program
+    participant memory
+    program->>+memory: Read(key=alice)
+    memory-->>-program: 100.0
+    program->>+memory: Write(key=alice, value=70.0)
+    memory-->>-program: Unit
+```
+
+```mermaid
+flowchart TD
+    n0["Read(key=alice)"]
+    n0 -- "10.0" --> n1
+    n1(["raises insufficient funds"])
+    n0 -- "100.0" --> n2
+    n2["Write(key=alice, value=70.0)"]
+    n2 --> n3
+    n3(["returns ok"])
+```
+
+</details>
 
 ## Core Concepts
 
 A `Trace` is the operational trace of one run under one handler stack. `observed` fits between any two layers and records every effect going down and every response coming up, so a run costs nothing but a log. `calls` gives the trace as nested calls, each with its effect, its response, the calls made meanwhile, and `relayed` when its participant only passed the effect on; the participant below the last observer is the trace's `last`.
 
-A `Tree` is the program itself, unfolded. `tree` answers every effect with every value of its response type when that is finite (Boolean, an enum, a sealed hierarchy of objects, Unit), with the representatives you name when it is not, and ends the path at an effect that can have no response, such as a failure. Name representatives by response type with `ofType`, by effect family with `ofEffect`, which wins, or with a rule; a type parameter counts as the type of the property that witnesses it, as a read's default does, and every representative is checked against the type. The program is replayed from the start once per path, which is what makes this work for program blocks, so it must be a function of its answers and finish under every answer. `paths` lists every path and `redundantResponses` the representatives that opened no path a sibling had not.
+A `Tree` is the program itself, unfolded. `tree` answers every effect with every value of its response type when that is finite (Boolean, an enum, a sealed hierarchy of objects, Unit), with the representatives you name when it is not, and ends the path at an effect that can have no response, such as a failure. Name representatives by response type with `ofType`, by effect family with `ofEffect`, which wins, or with a rule; a type parameter counts as the type of the property that witnesses it, as a read's default does, and every representative is type-checked. The program is replayed from the start once per path, so it must be a function of its answers and finish under every answer. `paths` lists every path and `redundantResponses` the representatives that opened no path a sibling had not.
 
-`replay` answers a program from a trace or a path and handles nothing else: the program's own code computes the result, the first effect that differs from the recording fails naming both, and the effect the recording left unanswered is passed on to the next handler.
+`replay` answers a program from a trace or a path and handles nothing else: the program's own code computes the result, the first effect that differs from the recording fails naming both, and the effect the recording left unanswered is passed on.
 
 `toText` and `Trace.parse` store a trace one wire per line. Literals stay typed (null, Unit, Boolean, numbers, String) and replay; anything else comes back as a `Described` stand-in that draws and compares like the original.
 
 `sequenceDiagram` draws a trace with the working handler activated and an unanswered effect marked; `flowchart` draws a tree with identical subtrees shared; `mermaidLabel` escapes everything Mermaid reads as syntax. Both renderers use only the public model, so another backend can sit beside them.
 
-Two limits. Effects without an equality of their own compare by class and description. A trace is well nested only for single-shot runs, so a multi-shot handler below an observer breaks it; the tree is unaffected.
+Two limits: effects without an equality of their own compare by class and description, and a trace is well nested only for single-shot runs, so a multi-shot handler below an observer breaks it; the tree is unaffected.
 
 ## Checks
 
-The explorer is checked against the library's specification interpreter on its random programs: every leaf is what the model computes under a handler answering from that path, and the leaves are the model's enumeration of every assignment of answers (`TreeLawsTest.kt`). Every diagram the tests generate, and the [examples page](../examples/README.md), go through Mermaid's own parser in CI. The examples' transfer flow uses its tree as a test oracle, and a copy without its balance check shows the oracle has teeth (`TransferMoneyOracleTest.kt`).
+The explorer is checked against the library's specification interpreter on its random programs: every leaf is what the model computes under a handler answering from that path, and the leaves are the model's enumeration of every assignment of answers (`TreeLawsTest.kt`). Every diagram the tests generate, this README's and the [examples page](../examples/README.md) go through Mermaid's own parser in CI. The examples' transfer flow uses its tree as a test oracle, checked against a copy without its balance check (`TransferMoneyOracleTest.kt`).
 
 ## Project layout
 
-- `src/main/` is the module: the model, `tree`, `replay` and the text form in `trace/`, the renderers in `trace/mermaid/`; `src/test/` its tests; `api/` the API dump.
-- `../examples/` draws, explores and replays a transfer flow (`./gradlew :examples:run`); the page it generates is `../examples/README.md`.
+- `src/main/` holds the model, `tree`, `replay` and the text form in `trace/` and the renderers in `trace/mermaid/`; `src/test/` the tests; `api/` the API dump.
+- `../examples/` draws, explores and replays a transfer flow (`./gradlew :examples:run`) and generates `../examples/README.md`.
 
 ## Contributing
 
@@ -87,7 +113,7 @@ The explorer is checked against the library's specification interpreter on its r
 ./gradlew :freer-trace:check   # tests and the API check
 ```
 
-A public API change needs `./gradlew :freer-trace:updateKotlinAbi` and the updated dump committed. Releases are the library's: one tag publishes both artifacts.
+A public API change needs `./gradlew :freer-trace:updateKotlinAbi` and the dump committed. One tag releases both artifacts.
 
 ## License
 

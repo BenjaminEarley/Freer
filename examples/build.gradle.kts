@@ -1,3 +1,6 @@
+import java.io.ByteArrayOutputStream
+import javax.inject.Inject
+
 plugins {
     kotlin("jvm")
     application
@@ -76,6 +79,52 @@ tasks.register<JavaExec>("runReadme") {
 
 tasks.named("check") {
     dependsOn("runReadme")
+}
+
+// The trace README shows the diagrams its block prints. Its main runs with the output captured,
+// and every ```mermaid block of the README must appear in that output, so the shown diagrams
+// cannot drift from the code. A task class rather than a JavaExec, so that the captured output
+// is task-local and the task fits the configuration cache.
+abstract class CheckReadmeDiagrams : DefaultTask() {
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @get:InputFiles
+    abstract val classpath: ConfigurableFileCollection
+
+    @get:Input
+    abstract val mainClass: Property<String>
+
+    @get:InputFile
+    abstract val readme: RegularFileProperty
+
+    @TaskAction
+    fun check() {
+        val printed = ByteArrayOutputStream()
+        execOperations.javaexec {
+            classpath = this@CheckReadmeDiagrams.classpath
+            mainClass = this@CheckReadmeDiagrams.mainClass
+            standardOutput = printed
+        }
+        val output = printed.toString(Charsets.UTF_8)
+        val shown = Regex("""(?ms)^```mermaid\n(.*?)^```$""").findAll(readme.get().asFile.readText()).map { it.groupValues[1].trimEnd() }.toList()
+        check(shown.isNotEmpty()) { "${readme.get().asFile} shows no mermaid block" }
+        for (diagram in shown) {
+            check(diagram in output) { "${readme.get().asFile} shows a diagram its block does not print:\n$diagram" }
+        }
+    }
+}
+
+tasks.register<CheckReadmeDiagrams>("checkReadmeDiagrams") {
+    group = "verification"
+    description = "Checks that the trace README shows the diagrams its block prints"
+    classpath.from(sourceSets.main.get().runtimeClasspath)
+    mainClass = "readme.trace.block1.Block1Kt"
+    readme = rootProject.layout.projectDirectory.file("freer-trace/README.md")
+}
+
+tasks.named("check") {
+    dependsOn("checkReadmeDiagrams")
 }
 
 // README.md of this module shows the diagrams of the diagrams scenario, which GitHub renders.

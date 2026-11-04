@@ -40,14 +40,14 @@ jobs:
         timeout-minutes: 45
         run: ./gradlew check :examples:run
 
-      # The diagrams page, and every diagram the freer-trace tests generated, through
-      # Mermaid's own parser. The runner's Node runs it; the packages go outside the checkout.
+      # The trace README's diagrams, the diagrams page, and every diagram the freer-trace tests
+      # generated, through Mermaid's own parser. The runner's Node runs it; the packages go outside the checkout.
       - name: Parse the diagrams with Mermaid
         timeout-minutes: 5
         run: |
           npm install --silent --no-audit --no-fund --prefix "$RUNNER_TEMP/mermaid" mermaid@11 jsdom@29
           cp .github/scripts/parse-mermaid.mjs "$RUNNER_TEMP/mermaid/"
-          node "$RUNNER_TEMP/mermaid/parse-mermaid.mjs" examples/README.md freer-trace/build/diagrams/from-tests.md
+          node "$RUNNER_TEMP/mermaid/parse-mermaid.mjs" freer-trace/README.md examples/README.md freer-trace/build/diagrams/from-tests.md
 
       # Fails below the mutation score threshold set in freer/build.gradle.kts.
       - name: Mutation-test the JVM classes
