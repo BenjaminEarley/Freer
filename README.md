@@ -22,9 +22,9 @@ data class Print(val line: String) : Console<Unit>
 data object ReadLine : Console<String>
 
 val greeter: Program<String> = program {
-    perform(Print("What is your name?")).bind()
-    val name = perform(ReadLine).bind()
-    perform(Print("Hello, $name!")).bind()
+    Print("What is your name?").bind()
+    val name = ReadLine.bind()
+    Print("Hello, $name!").bind()
     name
 }
 
@@ -103,7 +103,7 @@ flowchart TD
 
 ## Core Concepts
 
-`perform(effect)` is a one-step program that suspends on the effect. `program { }` sequences programs with `.bind()`, as `flatMap` does without a block. `runOrThrow()` and `run()` extract the value once every effect is handled. A handler is applied lazily, dispatches on the erased effect class (match the star-projected family) and removes the effects it answers. Five forms:
+Inside `program { }`, `.bind()` runs a sub-program or performs an effect; `perform(effect)` is the effect as a program, for `flatMap` chains. `runOrThrow()` and `run()` extract the value once every effect is handled. A handler is applied lazily, dispatches on the erased effect class (match the star-projected family) and removes the effects it answers. Five forms:
 
 | Form | The rule receives | Use it for |
 | --- | --- | --- |

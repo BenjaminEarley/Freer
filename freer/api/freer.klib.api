@@ -97,6 +97,7 @@ sealed class <#A: out kotlin/Any?> com.benjaminearley.freer/Program { // com.ben
 }
 
 sealed class com.benjaminearley.freer/ProgramScope { // com.benjaminearley.freer/ProgramScope|null[0]
+    final suspend fun <#A1: kotlin/Any?> (com.benjaminearley.freer/Effect<#A1>).bind(): #A1 // com.benjaminearley.freer/ProgramScope.bind|bind@com.benjaminearley.freer.Effect<0:0>(){0§<kotlin.Any?>}[0]
     final suspend fun <#A1: kotlin/Any?> (com.benjaminearley.freer/Program<#A1>).bind(): #A1 // com.benjaminearley.freer/ProgramScope.bind|bind@com.benjaminearley.freer.Program<0:0>(){0§<kotlin.Any?>}[0]
 }
 

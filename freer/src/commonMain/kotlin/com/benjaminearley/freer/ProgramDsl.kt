@@ -14,8 +14,8 @@ import kotlin.coroutines.resume
 import kotlin.reflect.KClass
 
 /**
- * Receiver scope of [program] blocks: sequence sub-programs with [bind]. Suspension is
- * restricted, so only Program binds — not arbitrary suspend calls — can occur inside.
+ * Receiver scope of [program] blocks: sequence sub-programs, and effects, with `bind`.
+ * Suspension is restricted, so only binds — not arbitrary suspend calls — can occur inside.
  */
 @RestrictsSuspension
 public sealed class ProgramScope {
@@ -36,6 +36,13 @@ public sealed class ProgramScope {
                 suspendOn(program, cont)
             }
         }
+
+    /**
+     * Perform this effect as the next step of the enclosing block and return its response.
+     * An effect is the one-step program [perform] makes of it, so `effect.bind()` is
+     * `perform(effect).bind()`, under the same single-shot rule.
+     */
+    public suspend fun <R> Effect<R>.bind(): R = perform(this).bind()
 
     // Park [program] as the pending bind and signal the coroutine behind [cont] to
     // suspend; buildProgram sequences the program and resumes [cont] with its value.
@@ -129,8 +136,8 @@ private class BindStep(
 }
 
 /**
- * Build a [Program] in direct style: `.bind()` each sub-program instead of chaining
- * flatMap. The block is captured, not run — each interpretation forces it afresh, so
+ * Build a [Program] in direct style: `.bind()` each sub-program, or each effect, instead
+ * of chaining flatMap. The block is captured, not run — each interpretation forces it afresh, so
  * program{} values are pure, replayable descriptions that can be interpreted any number
  * of times, under different handler stacks.
  */
@@ -214,7 +221,7 @@ internal fun <E : Effect<*>, A> Program<A>.handleWith(
     }
 
 // The proceed() continuation handed to an intercept rule: re-emits the intercepted
-// effect and yields the downstream response, exactly as `perform(effect).bind()`
+// effect and yields the downstream response, exactly as `effect.bind()`
 // would. A class rather than a suspend lambda capturing the effect: the object holds
 // only the effect reference, and suspending through the intrinsic directly needs no
 // state machine, whereas a suspend lambda is copied together with its continuation

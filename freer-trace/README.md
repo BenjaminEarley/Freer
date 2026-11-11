@@ -25,9 +25,9 @@ data class Read(val key: String) : Store<Double>
 data class Write(val key: String, val value: Double) : Store<Unit>
 
 fun withdraw(key: String, amount: Double): Program<String> = program {
-    val balance = perform(Read(key)).bind()
+    val balance = Read(key).bind()
     if (balance < amount) raise("insufficient funds").bind()
-    perform(Write(key, balance - amount)).bind()
+    Write(key, balance - amount).bind()
     "ok"
 }
 
