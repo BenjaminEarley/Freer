@@ -6,7 +6,7 @@ API reference (KDoc): [benjaminearley.github.io/Freer/freer-trace](https://benja
 
 ## Installation
 
-Add `implementation("com.benjaminearley:freer-trace:0.3.0")` to a JVM module, JVM 11 or later. It brings `freer` and kotlin-reflect, for response types.
+Add `implementation("com.benjaminearley:freer-trace:0.4.0")` to a JVM module, JVM 11 or later. It brings `freer` and kotlin-reflect, for response types.
 
 ## Quick Example
 
